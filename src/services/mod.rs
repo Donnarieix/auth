@@ -1,2 +1,3 @@
-pub mod user;
+pub mod client;
 pub mod session;
+pub mod user;
