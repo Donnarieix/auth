@@ -1,0 +1,18 @@
+[package]
+name = "auth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+argon2 = "0.6.0"
+axum = "0.8.9"
+axum-extra = { version = "0.12.6", features = ["cookie"] }
+base64 = "0.23.1"
+chrono = "0.4.45"
+dotenvy = "0.15.7"
+rand = "0.10.3"
+sea-orm = { version = "2.0.3", features = ["sqlx-sqlite", "runtime-tokio-rustls", "macros", "schema-sync", "entity-registry"] }
+serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.11.0"
+tokio = { version = "1.53.1", features = ["full"] }
+uuid = { version = "1.26.1", features = ["v4", "serde"] }

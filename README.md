@@ -12,7 +12,7 @@ Provide a common identity to Donnarieix apps through OpenID Connect. Each app ke
 
 A registered client should authenticate its users via **OpenID Connect Authorization Code + PKCE**, validate signed ID tokens from the issuer's published keys, and never handle the users' central passwords.
 
-The existing Rust/Axum/SeaORM/SQLite code will be imported as a **development-only prototype** in a dedicated pull request. It is not yet an OpenID Connect issuer.
+The Rust/Axum/SeaORM/SQLite code is a **development-only prototype**. It is not yet an OpenID Connect issuer.
 
 ## Security principles
 
@@ -22,6 +22,27 @@ The existing Rust/Axum/SeaORM/SQLite code will be imported as a **development-on
 - Explicitly registered client redirect URIs and scoped identity claims.
 - Security-sensitive changes require tests, review and controlled deployments.
 - Potentially exposed credentials or sessions from the old repository must be revoked or rotated; migrating Git history does not make them safe again.
+
+## Development only
+
+Install a stable Rust toolchain, then run:
+
+```sh
+cp .env.example .env
+cargo run
+```
+
+The API listens on `127.0.0.1:3000` only. It writes a local SQLite file at `data/auth.db` (excluded from Git). Do not use real accounts or deploy this prototype to a public network.
+
+Check the project before submitting changes:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-targets --all-features
+```
+
+**Passing unit tests does not mean authentication flows are production-safe.** Email-based login, credential separation, database migrations, request validation, rate limiting, secure cookies, CSRF protection and OIDC remain outstanding.
 
 ## Implementation tracking
 
