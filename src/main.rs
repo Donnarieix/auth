@@ -13,6 +13,7 @@ use crate::{
 mod entities;
 mod middleware;
 mod routes;
+mod schema;
 mod services;
 mod state;
 
