@@ -1,7 +1,5 @@
 //! Explicit, versioned SQLite schema. Never silently migrate a legacy prototype database.
-use sea_orm::{
-    ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement, TransactionTrait};
 
 const INITIAL_SCHEMA: &[&str] = &[
     r#"CREATE TABLE users (
@@ -151,9 +149,22 @@ mod tests {
     #[tokio::test]
     async fn unique_email_username_and_mutable_profile() {
         let db = empty_db().await;
-        let first = account("hello@example.com", "TestUser").insert(&db).await.unwrap();
-        assert!(account("HELLO@EXAMPLE.COM", "different").insert(&db).await.is_err());
-        assert!(account("other@example.com", "testuser").insert(&db).await.is_err());
+        let first = account("hello@example.com", "TestUser")
+            .insert(&db)
+            .await
+            .unwrap();
+        assert!(
+            account("HELLO@EXAMPLE.COM", "different")
+                .insert(&db)
+                .await
+                .is_err()
+        );
+        assert!(
+            account("other@example.com", "testuser")
+                .insert(&db)
+                .await
+                .is_err()
+        );
 
         let mut edit = first.clone().into_active_model();
         edit.username = Set("newname".to_owned());
@@ -162,7 +173,11 @@ mod tests {
         edit.updated_at = Set(chrono::Utc::now());
         edit.update(&db).await.unwrap();
 
-        let updated = user::Entity::find_by_id(first.id).one(&db).await.unwrap().unwrap();
+        let updated = user::Entity::find_by_id(first.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(updated.username, "newname");
         assert_eq!(updated.display_name.as_deref(), Some("My Name"));
         assert_eq!(updated.email, first.email);
@@ -172,29 +187,47 @@ mod tests {
     async fn email_change_resets_verification_and_uuid_is_immutable() {
         let db = empty_db().await;
         let original = account("first@example.com", "first")
-            .insert(&db).await.unwrap();
+            .insert(&db)
+            .await
+            .unwrap();
         let mut verified = original.clone().into_active_model();
         verified.email_verified = Set(true);
         verified.update(&db).await.unwrap();
 
         let mut changed = user::Entity::find_by_id(original.id)
-            .one(&db).await.unwrap().unwrap().into_active_model();
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .into_active_model();
         changed.email = Set("second@example.com".to_owned());
         changed.update(&db).await.unwrap();
-        let current = user::Entity::find_by_id(original.id).one(&db).await.unwrap().unwrap();
+        let current = user::Entity::find_by_id(original.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(!current.email_verified);
 
         let sql = format!(
             "UPDATE users SET id='{}' WHERE id='{}'",
-            Uuid::new_v4(), original.id
+            Uuid::new_v4(),
+            original.id
         );
-        assert!(db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql)).await.is_err());
+        assert!(
+            db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn credentials_are_separate_and_reference_an_account() {
         let db = empty_db().await;
-        let user = account("test@example.com", "test").insert(&db).await.unwrap();
+        let user = account("test@example.com", "test")
+            .insert(&db)
+            .await
+            .unwrap();
         let now = chrono::Utc::now();
         let credential = password_credential::ActiveModel {
             user_id: Set(user.id),
@@ -203,12 +236,23 @@ mod tests {
             updated_at: Set(now),
         };
         credential.insert(&db).await.unwrap();
-        assert!(password_credential::Entity::find_by_id(user.id).one(&db).await.unwrap().is_some());
-        assert!(password_credential::ActiveModel {
-            user_id: Set(Uuid::new_v4()),
-            password_hash: Set("never persist".to_owned()),
-            created_at: Set(now),
-            updated_at: Set(now),
-        }.insert(&db).await.is_err());
+        assert!(
+            password_credential::Entity::find_by_id(user.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            password_credential::ActiveModel {
+                user_id: Set(Uuid::new_v4()),
+                password_hash: Set("never persist".to_owned()),
+                created_at: Set(now),
+                updated_at: Set(now),
+            }
+            .insert(&db)
+            .await
+            .is_err()
+        );
     }
 }

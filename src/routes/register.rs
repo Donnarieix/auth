@@ -38,7 +38,11 @@ pub async fn register(
 
     let now = chrono::Utc::now();
     let user_id = Uuid::new_v4();
-    let tx = state.db.begin().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     entities::user::ActiveModel {
         id: Set(user_id),
