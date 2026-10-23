@@ -11,14 +11,14 @@ use crate::{
     entities,
     services::{
         session::{create_session, get_active_session},
-        user::get_user_by_username,
+        user::{get_password_credential, get_user_by_email},
     },
     state::AppState,
 };
 
 #[derive(Deserialize)]
 pub struct LoginRequest {
-    pub username: String,
+    pub email: String,
     pub password: String,
 }
 
@@ -27,24 +27,28 @@ pub async fn login(
     jar: CookieJar,
     Json(payload): Json<LoginRequest>,
 ) -> Result<CookieJar, StatusCode> {
-    let user = get_user_by_username(&state, payload.username.clone()).await?;
+    let email = payload.email.trim().to_ascii_lowercase();
+    let user = get_user_by_email(&state, &email)
+        .await?
+        .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    if user.is_none() {
+    if !user.active {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    let user = user.unwrap();
 
-    let hash = PasswordHash::new(&user.password).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if !Argon2::default()
+    let credential = get_password_credential(&state, user.id)
+        .await?
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let hash = PasswordHash::new(&credential.password_hash)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if Argon2::default()
         .verify_password(payload.password.as_bytes(), &hash)
-        .is_ok()
+        .is_err()
     {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let session = get_active_session(&state, user.clone()).await?;
-
-    if let Some(existing_session) = session {
+    if let Some(existing_session) = get_active_session(&state, user.clone()).await? {
         let mut session: entities::session::ActiveModel = existing_session.into();
         session.active = Set(false);
         session
@@ -53,12 +57,12 @@ pub async fn login(
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
 
-    let token = create_session(&state, user.clone()).await?;
+    let token = create_session(&state, user).await?;
 
-    let cookie = Cookie::build(("session", token.clone()))
+    let cookie = Cookie::build(("session", token))
         .http_only(true)
         .same_site(SameSite::Lax)
-        // .secure(true)
+        // Local development only. #11 must require Secure cookies under HTTPS.
         .path("/")
         .build();
 
