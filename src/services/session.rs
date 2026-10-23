@@ -77,7 +77,9 @@ mod tests {
     #[test]
     fn session_token_is_32_random_bytes_encoded_and_hashed() {
         let (token, hash) = generate_token();
-        let raw = URL_SAFE_NO_PAD.decode(&token).expect("valid base64url token");
+        let raw = URL_SAFE_NO_PAD
+            .decode(&token)
+            .expect("valid base64url token");
 
         assert_eq!(raw.len(), 32);
         assert_eq!(hash, Sha256::digest(token.as_bytes()).to_vec());
