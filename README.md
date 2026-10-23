@@ -44,6 +44,16 @@ cargo test --all-targets --all-features
 
 **Passing unit tests does not mean authentication flows are production-safe.** Email-based login, credential separation, database migrations, request validation, rate limiting, secure cookies, CSRF protection and OIDC remain outstanding.
 
+## Database schema
+
+The schema is managed by an explicit, transactional SQLite migration tracked in `schema_migrations`. On a new database it creates `users`, `password_credentials`, `sessions`, `clients` and `client_redirect_uris`.
+
+Accounts have immutable UUIDs, unique case-insensitive emails and usernames, optional public display names and avatars, verification state, active state, and creation/update timestamps. Password hashes are stored **only** in `password_credentials`. Changing an email address automatically resets `email_verified`.
+
+**Do not reuse the SQLite file from the old `auth-legacy` repository.** The initial migration refuses unversioned prototype tables; it does not attempt to salvage or convert old data. Use a new empty development database and never commit it.
+
+Current `POST /register` input is `{ "email": "...", "username": "...", "password": "..." }`; `POST /login` uses `email` and `password`. These local-only prototype endpoints still need the complete validation, abuse prevention and security hardening of #9–#11 before deployment.
+
 ## Implementation tracking
 
 See the repository issues for the scope, decisions and planned work. All imported code is subject to review and CI checks before being merged.

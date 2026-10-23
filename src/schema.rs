@@ -258,4 +258,39 @@ mod tests {
             .is_err()
         );
     }
+
+    #[tokio::test]
+    async fn updates_enforce_uniqueness_and_preserve_user_status() {
+        let db = empty_db().await;
+        let primary = account("primary@example.com", "Primary")
+            .insert(&db)
+            .await
+            .unwrap();
+        let secondary = account("secondary@example.com", "Secondary")
+            .insert(&db)
+            .await
+            .unwrap();
+
+        let mut duplicate_email = secondary.clone().into_active_model();
+        duplicate_email.email = Set("PRIMARY@EXAMPLE.COM".to_owned());
+        assert!(duplicate_email.update(&db).await.is_err());
+
+        let mut duplicate_username = secondary.clone().into_active_model();
+        duplicate_username.username = Set("primary".to_owned());
+        assert!(duplicate_username.update(&db).await.is_err());
+
+        let mut disabled = primary.clone().into_active_model();
+        let modified_at = chrono::Utc::now() + chrono::Duration::seconds(5);
+        disabled.active = Set(false);
+        disabled.updated_at = Set(modified_at);
+        disabled.update(&db).await.unwrap();
+
+        let current = user::Entity::find_by_id(primary.id)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!current.active);
+        assert_eq!(current.updated_at, modified_at);
+    }
 }
