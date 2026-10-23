@@ -9,7 +9,7 @@ pub struct Model {
 
     pub client_id: Uuid,
     pub redirect_uri: String,
-    
+
     #[sea_orm(belongs_to, from = "client_id", to = "id")]
     pub client: BelongsTo<super::client::Entity>,
 }

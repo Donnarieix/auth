@@ -20,6 +20,7 @@ pub async fn get_session(
     Ok(session)
 }
 
+
 pub async fn get_active_session(
     state: &AppState,
     user: entities::user::Model,
@@ -50,7 +51,8 @@ pub async fn create_session(
         active: Set(true),
     };
 
-    session.insert(&state.db)
+    session
+        .insert(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 

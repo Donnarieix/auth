@@ -1,4 +1,9 @@
-use axum::{extract::{Request, State}, http::StatusCode, middleware::Next, response::Response};
+use axum::{
+    extract::{Request, State},
+    http::StatusCode,
+    middleware::Next,
+    response::Response,
+};
 use axum_extra::extract::CookieJar;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, ModelTrait};
 use sha2::{Digest, Sha256};
@@ -11,9 +16,7 @@ pub async fn auth(
     next: Next,
 ) -> Result<Response, StatusCode> {
     let jar = CookieJar::from_headers(request.headers());
-    let cookie = jar
-        .get("session")
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let cookie = jar.get("session").ok_or(StatusCode::UNAUTHORIZED)?;
 
     let hash = Sha256::digest(cookie.value().as_bytes());
     let mut session = get_session(&state, hash.to_vec())

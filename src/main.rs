@@ -1,7 +1,14 @@
-use axum::{Router, routing::{get, post}, middleware as axum_middleware};
+use axum::{
+    Router, middleware as axum_middleware,
+    routing::{get, post},
+};
 use tokio::net::TcpListener;
 
-use crate::{middleware::auth, routes::{health::health, login::login, logout::logout, me::me, register::register}, state::AppState};
+use crate::{
+    middleware::auth,
+    routes::{health::health, login::login, logout::logout, me::me, register::register},
+    state::AppState,
+};
 
 mod entities;
 mod middleware;
@@ -24,7 +31,6 @@ async fn main() {
         .route("/health", get(health))
         .route("/register", post(register))
         .route("/login", post(login))
-
         .merge(protected)
         .with_state(state);
 

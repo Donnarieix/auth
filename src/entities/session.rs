@@ -16,7 +16,7 @@ pub struct Model {
     pub active: bool,
 
     #[sea_orm(belongs_to, from = "user_id", to = "id")]
-    pub user: BelongsTo<super::user::Entity>
+    pub user: BelongsTo<super::user::Entity>,
 }
 
 impl ActiveModelBehavior for ActiveModel {}
