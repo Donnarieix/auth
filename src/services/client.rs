@@ -3,7 +3,10 @@ use sea_orm::{EntityTrait, ModelTrait, QueryFilter};
 
 use crate::{entities, state::AppState};
 
-#[expect(dead_code, reason = "Required for the upcoming OpenID Connect client registry")]
+#[expect(
+    dead_code,
+    reason = "Required for the upcoming OpenID Connect client registry"
+)]
 pub async fn get_client(
     state: &AppState,
     client_id: String,
@@ -17,7 +20,10 @@ pub async fn get_client(
     Ok(client)
 }
 
-#[expect(dead_code, reason = "Required for the upcoming OpenID Connect client registry")]
+#[expect(
+    dead_code,
+    reason = "Required for the upcoming OpenID Connect client registry"
+)]
 pub async fn get_redirect_uris(
     state: &AppState,
     client: entities::client::Model,
@@ -31,7 +37,10 @@ pub async fn get_redirect_uris(
     Ok(redirect_uris)
 }
 
-#[expect(dead_code, reason = "Required for the upcoming OpenID Connect client registry")]
+#[expect(
+    dead_code,
+    reason = "Required for the upcoming OpenID Connect client registry"
+)]
 pub async fn is_redirect_uri_allowed(
     state: &AppState,
     client: entities::client::Model,
