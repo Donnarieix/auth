@@ -20,7 +20,6 @@ pub async fn get_session(
     Ok(session)
 }
 
-
 pub async fn get_active_session(
     state: &AppState,
     user: entities::user::Model,
