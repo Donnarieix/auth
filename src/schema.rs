@@ -209,15 +209,18 @@ mod tests {
             .unwrap();
         assert!(!current.email_verified);
 
-        let sql = format!(
-            "UPDATE users SET id='{}' WHERE id='{}'",
-            Uuid::new_v4(),
-            original.id
+        let change_id = Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE users SET id = ? WHERE id = ?",
+            [Uuid::new_v4().into(), original.id.into()],
         );
+        assert!(db.execute_raw(change_id).await.is_err());
         assert!(
-            db.execute_raw(Statement::from_string(DbBackend::Sqlite, sql))
+            user::Entity::find_by_id(original.id)
+                .one(&db)
                 .await
-                .is_err()
+                .unwrap()
+                .is_some()
         );
     }
 
