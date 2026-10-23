@@ -41,12 +41,12 @@ pub async fn create_session(
     let (token, hash) = generate_token();
 
     let session = entities::session::ActiveModel {
-        id: Set(Uuid::new_v4().into()),
+        id: Set(Uuid::new_v4()),
         user_id: Set(user.id),
         token_hash: Set(hash),
-        created_at: Set(chrono::Utc::now().into()),
-        expires_at: Set((chrono::Utc::now() + chrono::Duration::hours(1)).into()),
-        last_use: Set(chrono::Utc::now().into()),
+        created_at: Set(chrono::Utc::now()),
+        expires_at: Set(chrono::Utc::now() + chrono::Duration::hours(1)),
+        last_use: Set(chrono::Utc::now()),
         active: Set(true),
     };
 
@@ -63,17 +63,4 @@ pub fn generate_token() -> (String, Vec<u8>) {
     let token = URL_SAFE_NO_PAD.encode(bytes);
     let hash = Sha256::digest(token.as_bytes());
     (token, hash.to_vec())
-}
-
-pub async fn get_session_by_user(
-    state: &AppState,
-    user: &entities::user::Model,
-) -> Result<Option<entities::session::Model>, StatusCode> {
-    let session = entities::session::Entity::find()
-        .filter(entities::session::COLUMN.user_id.eq(user.id))
-        .one(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(session)
 }

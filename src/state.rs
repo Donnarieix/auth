@@ -34,10 +34,10 @@ impl AppState {
             }
 
             let client = entities::client::ActiveModel {
-                id: Set(Uuid::new_v4().into()),
+                id: Set(Uuid::new_v4()),
                 client_id: Set("debug".into()),
                 name: Set("Debug Client".into()),
-                created_at: Set(chrono::Utc::now().into()),
+                created_at: Set(chrono::Utc::now()),
                 active: Set(true),
             };
             client.insert(&db).await.unwrap();

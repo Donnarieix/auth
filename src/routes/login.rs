@@ -44,8 +44,8 @@ pub async fn login(
 
     let session = get_active_session(&state, user.clone()).await?;
 
-    if session.is_some() {
-        let mut session: entities::session::ActiveModel = session.unwrap().into();
+    if let Some(existing_session) = session {
+        let mut session: entities::session::ActiveModel = existing_session.into();
         session.active = Set(false);
         session
             .update(&state.db)
