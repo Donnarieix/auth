@@ -64,3 +64,29 @@ pub fn generate_token() -> (String, Vec<u8>) {
     let hash = Sha256::digest(token.as_bytes());
     (token, hash.to_vec())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    use sha2::{Digest, Sha256};
+
+    use super::generate_token;
+
+    #[test]
+    fn session_token_is_32_random_bytes_encoded_and_hashed() {
+        let (token, hash) = generate_token();
+        let raw = URL_SAFE_NO_PAD.decode(&token).expect("valid base64url token");
+
+        assert_eq!(raw.len(), 32);
+        assert_eq!(hash, Sha256::digest(token.as_bytes()).to_vec());
+        assert_ne!(hash, token.as_bytes());
+    }
+
+    #[test]
+    fn independently_generated_session_tokens_are_distinct() {
+        let tokens: HashSet<String> = (0..128).map(|_| generate_token().0).collect();
+        assert_eq!(tokens.len(), 128);
+    }
+}
