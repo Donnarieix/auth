@@ -64,9 +64,7 @@ pub async fn approve(
     let tx = db.begin().await?;
     let account = user::Entity::find_by_id(user_id).one(&tx).await?;
     let app = client::Entity::find_by_id(client_id).one(&tx).await?;
-    if !account.is_some_and(|u| u.active && u.email_verified)
-        || !app.is_some_and(|a| a.active)
-    {
+    if !account.is_some_and(|u| u.active && u.email_verified) || !app.is_some_and(|a| a.active) {
         return Err(DbErr::Custom("Account or client not authorized".into()));
     }
 
@@ -110,7 +108,10 @@ pub async fn approved(
         .is_some_and(|granted| granted.contains(&requested)))
 }
 
-#[expect(dead_code, reason = "OIDC consent management interface is not yet enabled")]
+#[expect(
+    dead_code,
+    reason = "OIDC consent management interface is not yet enabled"
+)]
 pub async fn revoke(
     db: &DatabaseConnection,
     user_id: Uuid,
@@ -129,11 +130,14 @@ pub async fn revoke(
 
 #[cfg(test)]
 mod tests {
+    use super::{Scopes, approve, approved, revoke};
+    use crate::{
+        entities::{client, user},
+        schema,
+    };
     use chrono::Utc;
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, EntityTrait};
     use uuid::Uuid;
-    use super::{Scopes, approve, approved, revoke};
-    use crate::{entities::{client, user}, schema};
 
     async fn fixture() -> (sea_orm::DatabaseConnection, Uuid, Uuid) {
         let db = Database::connect("sqlite::memory:").await.unwrap();
@@ -142,22 +146,42 @@ mod tests {
         let cid = Uuid::new_v4();
         let now = Utc::now();
         user::ActiveModel {
-            id: Set(uid), email: Set("test@example.com".into()),
-            email_verified: Set(true), username: Set("test".into()),
-            display_name: Set(None), avatar_url: Set(None),
-            active: Set(true), created_at: Set(now), updated_at: Set(now),
-        }.insert(&db).await.unwrap();
+            id: Set(uid),
+            email: Set("test@example.com".into()),
+            email_verified: Set(true),
+            username: Set("test".into()),
+            display_name: Set(None),
+            avatar_url: Set(None),
+            active: Set(true),
+            created_at: Set(now),
+            updated_at: Set(now),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         client::ActiveModel {
-            id: Set(cid), client_id: Set("test-client".into()),
-            client_type: Set("web".into()), name: Set("Test".into()),
-            created_at: Set(now), active: Set(true),
-        }.insert(&db).await.unwrap();
+            id: Set(cid),
+            client_id: Set("test-client".into()),
+            client_type: Set("web".into()),
+            name: Set("Test".into()),
+            created_at: Set(now),
+            active: Set(true),
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         (db, uid, cid)
     }
 
     #[test]
     fn scopes_are_restricted_and_order_independent() {
-        assert_eq!(Scopes::parse("email openid profile").unwrap(), Scopes {profile:true,email:true});
+        assert_eq!(
+            Scopes::parse("email openid profile").unwrap(),
+            Scopes {
+                profile: true,
+                email: true
+            }
+        );
         for invalid in ["", "email", "openid openid", "openid admin", "openid EMAIL"] {
             assert!(Scopes::parse(invalid).is_err());
         }
@@ -182,7 +206,12 @@ mod tests {
     #[tokio::test]
     async fn inactive_client_and_unverified_user_cannot_approve() {
         let (db, uid, cid) = fixture().await;
-        let mut account = user::Entity::find_by_id(uid).one(&db).await.unwrap().unwrap().into_active_model();
+        let mut account = user::Entity::find_by_id(uid)
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap()
+            .into_active_model();
         account.email_verified = Set(false);
         account.update(&db).await.unwrap();
         assert!(approve(&db, uid, cid, "openid").await.is_err());
