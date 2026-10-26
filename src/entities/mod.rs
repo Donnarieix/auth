@@ -1,3 +1,4 @@
+pub mod authorization_code;
 pub mod account_token;
 pub mod client;
 pub mod client_redirect_uri;
