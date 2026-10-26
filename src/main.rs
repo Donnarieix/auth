@@ -55,12 +55,7 @@ fn router(state: AppState) -> Router {
         .route("/email/verification/confirm", post(confirm_verification))
         .route("/password/reset/request", post(request_reset))
         .route("/password/reset/confirm", post(confirm_reset))
-        .merge(protected)
-        .layer(DefaultBodyLimit::max(16 * 1024))
-        .layer(axum_middleware::from_fn_with_state(
-            state.clone(),
-            require_same_origin,
-        ));
+        .merge(protected);
     if state.oidc_keys.is_some() {
         app = app
             .route("/.well-known/jwks.json", get(jwks))
@@ -71,7 +66,14 @@ fn router(state: AppState) -> Router {
             .route("/token", post(token))
             .route("/userinfo", get(userinfo));
     }
-    app.with_state(state)
+    // Apply security layers AFTER adding conditional OIDC routes; otherwise
+    // newly registered routes would bypass the common Origin/CSRF policy.
+    app.layer(DefaultBodyLimit::max(16 * 1024))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            require_same_origin,
+        ))
+        .with_state(state)
 }
 
 #[tokio::main]
