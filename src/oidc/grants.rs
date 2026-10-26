@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     entities::{authorization_code, client, client_redirect_uri, session, user},
-    oidc::{AuthorizationRequest, matches_s256, validate_authorization_request},
+    oidc::{AuthorizationRequest, consent, matches_s256, validate_authorization_request},
     services::session::generate_token,
 };
 
@@ -83,6 +83,10 @@ pub async fn issue(
         || browser.user_id != user_id
         || browser.expires_at <= now
     {
+        return Err(GrantError::InvalidRequest);
+    }
+
+    if !consent::approved(&tx, account.id, app.id, &request.scope).await? {
         return Err(GrantError::InvalidRequest);
     }
 
@@ -171,6 +175,11 @@ pub async fn redeem(
         return Err(GrantError::InvalidGrant);
     }
 
+    // Consent may be revoked between authorization and code redemption.
+    if !consent::approved(&tx, account.id, app.id, &record.scope).await? {
+        return Err(GrantError::InvalidGrant);
+    }
+
     let result = authorization_code::Entity::update_many()
         .col_expr(authorization_code::COLUMN.consumed_at, Expr::value(now))
         .filter(authorization_code::COLUMN.id.eq(record.id))
@@ -202,9 +211,9 @@ mod tests {
     use super::{GrantError, issue, redeem};
     use crate::{
         entities::{authorization_code, session, user},
-        oidc::AuthorizationRequest,
+        oidc::{AuthorizationRequest, consent},
         schema,
-        services::client::{ClientType, disable_client, register_client},
+        services::client::{ClientType, disable_client, get_client, register_client},
     };
 
     const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
@@ -255,6 +264,11 @@ mod tests {
         .insert(&db)
         .await
         .unwrap();
+        let app = get_client(&db, &client_id).await.unwrap().unwrap();
+        consent::approve(&db, uid, app.id, "openid profile")
+            .await
+            .unwrap();
+
         let request = AuthorizationRequest {
             response_type: "code".into(),
             client_id,
@@ -432,4 +446,23 @@ mod tests {
             "the authorization code must be consumed exactly once"
         );
     }
+ 
+    #[tokio::test]
+    async fn unapproved_or_revoked_scopes_never_yield_grants() {
+        let (db, mut request, uid, sid) = fixture().await;
+        request.scope = "openid email".into();
+        assert!(matches!(
+            issue(&db, &request, uid, sid).await,
+            Err(GrantError::InvalidRequest)
+        ));
+        request.scope = "openid profile".into();
+        let issued = issue(&db, &request, uid, sid).await.unwrap();
+        let client = get_client(&db, &request.client_id).await.unwrap().unwrap();
+        assert!(consent::revoke(&db, uid, client.id).await.unwrap());
+        assert!(matches!(
+            redeem(&db, &issued, &request.client_id, &request.redirect_uri, VERIFIER).await,
+            Err(GrantError::InvalidGrant)
+        ));
+    }
+
 }
