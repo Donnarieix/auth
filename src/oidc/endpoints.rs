@@ -265,7 +265,7 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> Resp
         [(header::CACHE_CONTROL, "no-store")],
         Json(Profile {
             sub: account.id.to_string(),
-            preferred_username: scopes.profile.then(|| account.username),
+            preferred_username: scopes.profile.then_some(account.username),
             name: if scopes.profile {
                 account.display_name
             } else {
@@ -276,7 +276,7 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> Resp
             } else {
                 None
             },
-            email: scopes.email.then(|| account.email),
+            email: scopes.email.then_some(account.email),
             email_verified: scopes.email.then_some(account.email_verified),
         }),
     )

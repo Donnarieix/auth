@@ -9,7 +9,7 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use chrono::Utc;
-use sea_orm::{EntityTrait, ModelTrait};
+use sea_orm::ModelTrait;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::Url;
