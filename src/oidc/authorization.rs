@@ -114,7 +114,10 @@ pub async fn authorization_page(
         return error_page(StatusCode::BAD_REQUEST, "Unregistered client.");
     };
     if app.client_type != "desktop" {
-        return error_page(StatusCode::BAD_REQUEST, "Only public native clients are supported.");
+        return error_page(
+            StatusCode::BAD_REQUEST,
+            "Only public native clients are supported.",
+        );
     }
     let fields = hidden_request(&request);
     let details = format!(
