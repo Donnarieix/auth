@@ -5,7 +5,7 @@ use chrono::Utc;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use rand_core::OsRng;
 use rsa::{RsaPrivateKey, pkcs8::{EncodePrivateKey, LineEnding}};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, EntityTrait};
 use serde_json::Value;
 use tower::ServiceExt;
 use url::{Url, form_urlencoded};
