@@ -11,14 +11,14 @@ use rsa::{
     RsaPrivateKey,
     pkcs8::{EncodePrivateKey, LineEnding},
 };
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, EntityTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database};
 use serde_json::Value;
 use tower::ServiceExt;
 use url::{Url, form_urlencoded};
 use uuid::Uuid;
 
 use crate::{
-    entities::user,
+    entities::{password_credential, user},
     oidc::{
         consent,
         signing::{IdToken, SigningKeys},
@@ -27,7 +27,7 @@ use crate::{
     security::SecurityConfig,
     services::{
         client::{ClientType, get_client, register_client},
-        session::create_session,
+        password,
     },
     state::AppState,
 };
@@ -106,17 +106,12 @@ async fn consent_code_token_and_userinfo_flow() {
     .await
     .unwrap();
     let client = get_client(&state.db, &client_id).await.unwrap().unwrap();
-    let raw_session = create_session(
-        &state,
-        user::Entity::find_by_id(id)
-            .one(&state.db)
-            .await
-            .unwrap()
-            .unwrap(),
-    )
-    .await
-    .unwrap();
-    let browser_cookie = format!("__Host-auth_session={raw_session}");
+    password_credential::ActiveModel {
+        user_id: Set(id),
+        password_hash: Set(password::hash(&state, "Strong test password 2026!".into()).await.unwrap()),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }.insert(&state.db).await.unwrap();
     let app = router(state.clone());
     let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
     let params = [
@@ -130,6 +125,16 @@ async fn consent_code_token_and_userinfo_flow() {
         ("code_challenge_method", "S256"),
     ];
     let base = form(&params);
+    let sign_in = send(&app, Method::GET, &format!("/authorize?{base}"), String::new(), None, false).await;
+    assert_eq!(sign_in.status(), StatusCode::OK);
+    let sign_in_html = String::from_utf8(to_bytes(sign_in.into_body(), 65536).await.unwrap().to_vec()).unwrap();
+    assert!(sign_in_html.contains("Sign in to Donnarieix"));
+    let login_form = format!("{base}&email=known%40example.com&password=Strong+test+password+2026%21");
+    let logged_in = send(&app, Method::POST, "/authorize/login", login_form, None, true).await;
+    assert_eq!(logged_in.status(), StatusCode::SEE_OTHER);
+    let browser_cookie = logged_in.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap()
+        .split(';').next().unwrap().to_owned();
+    assert!(browser_cookie.starts_with("__Host-auth_session="));
     let metadata = json(
         send(
             &app,
