@@ -3,7 +3,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
-    sea_query::Expr,
+    sea_query::Expr, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -136,7 +136,7 @@ mod tests {
         schema,
     };
     use chrono::Utc;
-    use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, EntityTrait};
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, EntityTrait, IntoActiveModel};
     use uuid::Uuid;
 
     async fn fixture() -> (sea_orm::DatabaseConnection, Uuid, Uuid) {
