@@ -299,6 +299,7 @@ mod tests {
         let user = account();
         let mut grant = RedeemedGrant {
             user_id: user.id,
+            session_id: Uuid::new_v4(),
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
@@ -366,6 +367,7 @@ mod tests {
         let user = account();
         let grant = RedeemedGrant {
             user_id: user.id,
+            session_id: Uuid::new_v4(),
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
@@ -394,6 +396,7 @@ mod tests {
         let mut user = account();
         let grant = RedeemedGrant {
             user_id: user.id,
+            session_id: Uuid::new_v4(),
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
