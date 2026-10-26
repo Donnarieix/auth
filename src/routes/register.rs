@@ -1,10 +1,13 @@
-use argon2::{Argon2, PasswordHasher};
 use axum::{Json, extract::State, http::StatusCode};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, TransactionTrait};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, SqlErr, TransactionTrait};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{entities, state::AppState};
+use crate::{
+    entities,
+    services::{identity::validate_registration, password},
+    state::AppState,
+};
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
@@ -17,25 +20,21 @@ pub async fn register(
     State(state): State<AppState>,
     Json(payload): Json<RegisterRequest>,
 ) -> Result<StatusCode, StatusCode> {
-    // Temporary minimal validation. Full input policy and abuse controls belong to #9.
-    let email = payload.email.trim().to_ascii_lowercase();
-    let username = payload.username.trim();
-    if !email.is_ascii()
-        || !email.contains('@')
-        || email.len() > 254
-        || username.is_empty()
-        || username.len() > 64
-        || payload.password.len() < 12
-        || payload.password.len() > 1024
+    let input = validate_registration(&payload.email, &payload.username, &payload.password)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Global budget blocks attackers from evading throttling by varying email.
+    // An email-specific budget bounds repeated attempts at a single account.
+    if !state
+        .abuse
+        .allow("register", &input.email, 40, 12)
+        .await
     {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    let password_hash = Argon2::default()
-        .hash_password(payload.password.as_bytes())
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .to_string();
-
+    // Hash even for duplicates to avoid a cheap existence check.
+    let password_hash = password::hash(&state, payload.password).await?;
     let now = chrono::Utc::now();
     let user_id = Uuid::new_v4();
     let tx = state
@@ -44,11 +43,11 @@ pub async fn register(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    entities::user::ActiveModel {
+    let result = entities::user::ActiveModel {
         id: Set(user_id),
-        email: Set(email),
+        email: Set(input.email),
         email_verified: Set(false),
-        username: Set(username.to_owned()),
+        username: Set(input.username),
         display_name: Set(None),
         avatar_url: Set(None),
         active: Set(true),
@@ -56,8 +55,16 @@ pub async fn register(
         updated_at: Set(now),
     }
     .insert(&tx)
-    .await
-    .map_err(|_| StatusCode::CONFLICT)?;
+    .await;
+
+    match result {
+        Ok(_) => {}
+        // Neither email nor username existence is disclosed publicly.
+        Err(err) if matches!(err.sql_err(), Some(SqlErr::UniqueConstraintViolation(_))) => {
+            return Ok(StatusCode::ACCEPTED);
+        }
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 
     entities::password_credential::ActiveModel {
         user_id: Set(user_id),
@@ -73,5 +80,7 @@ pub async fn register(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    Ok(StatusCode::CREATED)
+    // Verification email is not yet implemented (#10); accepted does not
+    // confirm whether the identifier was already registered.
+    Ok(StatusCode::ACCEPTED)
 }
