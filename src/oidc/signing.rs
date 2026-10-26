@@ -302,6 +302,7 @@ mod tests {
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
+            auth_time: Utc::now(),
         };
         let token = keys.sign_id_token(&grant, &user, Utc::now()).unwrap();
         let hdr = decode_header(&token).unwrap();
@@ -368,6 +369,7 @@ mod tests {
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
+            auth_time: Utc::now(),
         };
         let old_token = previous.sign_id_token(&grant, &user, Utc::now()).unwrap();
         let old_jwk = rotating
@@ -395,6 +397,7 @@ mod tests {
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
+            auth_time: Utc::now(),
         };
         user.email_verified = false;
         assert_eq!(

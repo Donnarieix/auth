@@ -8,7 +8,10 @@ use tokio::net::TcpListener;
 
 use crate::{
     middleware::auth,
+    oidc::authorization::{approve, authorization_page, deny},
+    oidc::discovery::discovery,
     oidc::signing::jwks,
+    oidc::token::{token, userinfo},
     routes::account::{confirm_reset, confirm_verification, request_reset, request_verification},
     routes::{health::health, login::login, logout::logout, me::me, register::register},
     security::require_same_origin,
@@ -32,6 +35,8 @@ mod state;
 #[cfg(test)]
 mod integration_tests;
 #[cfg(test)]
+mod oidc_flow_tests;
+#[cfg(test)]
 mod recovery_tests;
 #[cfg(test)]
 mod session_tests;
@@ -50,16 +55,25 @@ fn router(state: AppState) -> Router {
         .route("/email/verification/confirm", post(confirm_verification))
         .route("/password/reset/request", post(request_reset))
         .route("/password/reset/confirm", post(confirm_reset))
-        .merge(protected)
-        .layer(DefaultBodyLimit::max(16 * 1024))
+        .merge(protected);
+    if state.oidc_keys.is_some() {
+        app = app
+            .route("/.well-known/jwks.json", get(jwks))
+            .route("/.well-known/openid-configuration", get(discovery))
+            .route("/authorize", get(authorization_page))
+            .route("/authorize/approve", post(approve))
+            .route("/authorize/deny", post(deny))
+            .route("/token", post(token))
+            .route("/userinfo", get(userinfo));
+    }
+    // Apply security layers AFTER adding conditional OIDC routes; otherwise
+    // newly registered routes would bypass the common Origin/CSRF policy.
+    app.layer(DefaultBodyLimit::max(16 * 1024))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             require_same_origin,
-        ));
-    if state.oidc_keys.is_some() {
-        app = app.route("/.well-known/jwks.json", get(jwks));
-    }
-    app.with_state(state)
+        ))
+        .with_state(state)
 }
 
 #[tokio::main]

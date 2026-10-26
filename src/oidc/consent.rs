@@ -52,10 +52,6 @@ impl Scopes {
 
 /// Explicit approval must only be called by a trusted, CSRF-protected consent
 /// UI. It is intentionally not exposed by any HTTP endpoint yet.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "OIDC consent UI is not yet implemented")
-)]
 pub async fn approve(
     db: &DatabaseConnection,
     user_id: Uuid,
