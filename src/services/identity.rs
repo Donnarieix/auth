@@ -47,6 +47,12 @@ pub fn normalize_email(input: &str) -> Option<String> {
     Some(email.to_ascii_lowercase())
 }
 
+pub fn valid_password(password: &str) -> bool {
+    (12..=128).contains(&password.chars().count())
+        && password.len() <= 512
+        && !password.contains('\0')
+}
+
 pub fn validate_registration(
     email: &str,
     username: &str,
@@ -61,10 +67,7 @@ pub fn validate_registration(
     {
         return Err(ValidationError::Username);
     }
-    if !(12..=128).contains(&password.chars().count())
-        || password.len() > 512
-        || password.contains('\0')
-    {
+    if !valid_password(password) {
         return Err(ValidationError::Password);
     }
     Ok(Registration {

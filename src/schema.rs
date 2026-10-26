@@ -52,12 +52,32 @@ const INITIAL_SCHEMA: &[&str] = &[
     )"#,
 ];
 
+const RECOVERY_SCHEMA: &[&str] = &[
+    r#"CREATE TABLE account_tokens (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        purpose TEXT NOT NULL CHECK (purpose IN ('verify_email', 'reset_password')),
+        email TEXT NOT NULL COLLATE NOCASE,
+        token_hash BLOB NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        consumed_at TEXT
+    )"#,
+    "CREATE INDEX account_tokens_user_purpose_idx ON account_tokens(user_id, purpose)",
+    r#"CREATE TABLE account_security_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        event_kind TEXT NOT NULL CHECK (event_kind IN ('email_verified', 'password_reset')),
+        created_at TEXT NOT NULL
+    )"#,
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
 
 pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
-    // DDL and migration marker are committed together.
+    // Both schema revisions and migration markers are committed atomically.
     let tx = db.begin().await?;
     tx.execute_raw(statement(
         "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY NOT NULL)",
@@ -66,34 +86,60 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version = 1",
-        ))
-        .await?
-        .is_some()
-    {
-        return tx.commit().await;
-    }
-
-    // An older database may store passwords inside users. Never overwrite it.
-    if tx
-        .query_one_raw(statement(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'sessions', 'clients', 'client_redirect_uris', 'password_credentials') LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 2 LIMIT 1",
         ))
         .await?
         .is_some()
     {
         return Err(DbErr::Custom(
-            "Unversioned Auth tables found. Back up and migrate them explicitly; a fresh database is required for schema v1.".into(),
+            "Database schema is newer than this server".into(),
         ));
     }
 
-    for sql in INITIAL_SCHEMA {
-        tx.execute_raw(statement(sql)).await?;
+    let has_v1 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 1",
+        ))
+        .await?
+        .is_some();
+
+    if !has_v1 {
+        if tx
+            .query_one_raw(statement(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('users', 'sessions', 'clients', 'client_redirect_uris', 'password_credentials') LIMIT 1",
+            ))
+            .await?
+            .is_some()
+        {
+            return Err(DbErr::Custom(
+                "Unversioned Auth tables found. Back up and migrate explicitly; a fresh database is required for schema v1.".into(),
+            ));
+        }
+        for sql in INITIAL_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (1)",
+        ))
+        .await?;
     }
-    tx.execute_raw(statement(
-        "INSERT INTO schema_migrations (version) VALUES (1)",
-    ))
-    .await?;
+
+    let has_v2 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 2",
+        ))
+        .await?
+        .is_some();
+    if !has_v2 {
+        for sql in RECOVERY_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (2)",
+        ))
+        .await?;
+    }
+
     tx.commit().await
 }
 
@@ -144,6 +190,55 @@ mod tests {
         .await
         .unwrap();
         assert!(apply(&old).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn upgrades_version_one_without_losing_accounts() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL)".to_owned(),
+        ))
+        .await
+        .unwrap();
+        for sql in super::INITIAL_SCHEMA {
+            db.execute_raw(super::statement(sql)).await.unwrap();
+        }
+        db.execute_raw(super::statement(
+            "INSERT INTO schema_migrations (version) VALUES (1)",
+        ))
+        .await
+        .unwrap();
+        let existing = account("upgrade@example.com", "upgrade")
+            .insert(&db)
+            .await
+            .unwrap();
+
+        apply(&db).await.expect("upgrade v1 to v2");
+        apply(&db).await.expect("migration stays idempotent");
+        assert!(
+            user::Entity::find_by_id(existing.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'account_tokens'",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT version FROM schema_migrations WHERE version = 2",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
     }
 
     #[tokio::test]
