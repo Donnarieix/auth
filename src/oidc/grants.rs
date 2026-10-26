@@ -19,7 +19,8 @@ use crate::{
 pub enum GrantError {
     InvalidRequest,
     InvalidGrant,
-    Database,}
+    Database,
+}
 
 impl From<DbErr> for GrantError {
     fn from(_: DbErr) -> Self {
@@ -470,5 +471,4 @@ mod tests {
             Err(GrantError::InvalidGrant)
         ));
     }
-
 }
