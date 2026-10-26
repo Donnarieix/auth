@@ -42,7 +42,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features
 ```
 
-**Passing unit tests does not mean authentication flows are production-safe.** Email-based login, credential separation, database migrations, request validation, rate limiting, secure cookies, CSRF protection and OIDC remain outstanding.
+**Passing unit tests does not mean authentication flows are production-safe.** Account and browser-session foundations exist, but a deployable OIDC provider, full operational controls and a security review remain outstanding.
 
 ## Database schema
 
@@ -112,6 +112,23 @@ MAIL_FROM=auth@example.com
 SMTP uses an authenticated **TLS relay on port 465** (SMTPS). If `SMTP_HOST` is absent, delivery is disabled and no codes are exposed in logs, files or API responses. Requests still return their generic 202 response. Incorrect partial SMTP configuration prevents startup.
 
 **Not production-ready:** email delivery is currently best effort; a crash can interrupt pending sends. Configure SPF, DKIM and DMARC for the sender, add a durable delivery queue, production security headers, distributed abuse controls, account notifications and proper frontend flows before exposing the service. Secure cookies/CSRF are tracked by #11, OpenID Connect by #12.
+
+## OIDC client registry (first foundation, not an OIDC issuer yet)
+
+Donnarieix Auth's V1 will implement **Authorization Code + PKCE S256** only. A registered application's redirect URI must exactly match one of the administrator-approved URIs. No OAuth implicit, password, or public client-registration endpoint is provided.
+
+For now, only operators who can access the **local SQLite database** may create or disable OAuth clients using the server binary's **administrative command-line mode**:
+
+```sh
+cargo run -- client add web "Example Web App" https://app.example.com/callback
+cargo run -- client add desktop "Example Desktop App" http://127.0.0.1:40404/callback
+cargo run -- client list
+cargo run -- client disable <client-id>
+```
+
+The `add` command prints a randomly generated public `client_id`. Clients are initially **public clients**, without a client secret, and will be required to use PKCE S256. `web` callbacks must use HTTPS. Native `desktop` callbacks may use HTTPS or an IPv4/IPv6 loopback HTTP URL with a fixed registered port. **Dynamic native loopback ports are not yet implemented.** Wildcards, prefix matching, URL fragments and embedded URL credentials are forbidden.
+
+There is **no** `/authorize`, `/token`, `/userinfo`, `/.well-known/openid-configuration` or `/jwks` endpoint yet. The request validator exists but is not exposed publicly. It requires `response_type=code`, `scope=openid`, explicit long `state` and `nonce`, and a canonical S256 PKCE challenge. Client secrets, administrator accounts, the separate developer interface, signed JWTs, key rotation, discovery and integration testing are subsequent work under #12. **Do not integrate an application or expose the service until those are completed.**
 
 ## Implementation tracking
 

@@ -16,6 +16,7 @@ use crate::{
 
 mod admin;
 mod entities;
+#[expect(dead_code, reason = "OIDC request validation is staged until token issuance is implemented")]
 mod oidc;
 mod middleware;
 mod routes;

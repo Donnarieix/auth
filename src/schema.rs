@@ -287,6 +287,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn existing_client_registry_upgrades_to_version_four() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_raw(super::statement(
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL)",
+        ))
+        .await
+        .unwrap();
+
+        for sql in super::INITIAL_SCHEMA
+            .iter()
+            .chain(super::RECOVERY_SCHEMA)
+            .chain(super::SESSION_SECURITY_SCHEMA)
+        {
+            db.execute_raw(super::statement(sql)).await.unwrap();
+        }
+        db.execute_raw(super::statement(
+            "INSERT INTO schema_migrations (version) VALUES (1), (2), (3)",
+        ))
+        .await
+        .unwrap();
+        db.execute_raw(super::statement(
+            "INSERT INTO clients(id,client_id,name,created_at,active) VALUES ('00000000-0000-4000-8000-000000000001', 'legacy-client', 'Legacy', '2026-01-01T00:00:00Z', 1)",
+        ))
+        .await
+        .unwrap();
+
+        apply(&db).await.unwrap();
+        apply(&db).await.unwrap();
+        let found = db
+            .query_one_raw(super::statement(
+                "SELECT client_type FROM clients WHERE client_id = 'legacy-client'",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let kind: String = found.try_get("", "client_type").unwrap();
+        assert_eq!(kind, "web");
+        assert!(db
+            .query_one_raw(super::statement(
+                "SELECT version FROM schema_migrations WHERE version = 4",
+            ))
+            .await.unwrap().is_some());
+    }
+
+    #[tokio::test]
     async fn unique_email_username_and_mutable_profile() {
         let db = empty_db().await;
         let first = account("hello@example.com", "TestUser")
