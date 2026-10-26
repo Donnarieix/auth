@@ -2,8 +2,8 @@
 //! This module only persists or checks an explicit approval. No implicit grants.
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    QueryFilter, TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 

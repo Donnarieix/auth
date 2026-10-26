@@ -19,8 +19,7 @@ use crate::{
 pub enum GrantError {
     InvalidRequest,
     InvalidGrant,
-    Database,
-}
+    Database,}
 
 impl From<DbErr> for GrantError {
     fn from(_: DbErr) -> Self {
@@ -446,7 +445,7 @@ mod tests {
             "the authorization code must be consumed exactly once"
         );
     }
- 
+
     #[tokio::test]
     async fn unapproved_or_revoked_scopes_never_yield_grants() {
         let (db, mut request, uid, sid) = fixture().await;
@@ -460,7 +459,14 @@ mod tests {
         let client = get_client(&db, &request.client_id).await.unwrap().unwrap();
         assert!(consent::revoke(&db, uid, client.id).await.unwrap());
         assert!(matches!(
-            redeem(&db, &issued, &request.client_id, &request.redirect_uri, VERIFIER).await,
+            redeem(
+                &db,
+                &issued,
+                &request.client_id,
+                &request.redirect_uri,
+                VERIFIER
+            )
+            .await,
             Err(GrantError::InvalidGrant)
         ));
     }
