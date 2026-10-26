@@ -136,7 +136,8 @@ pub async fn is_redirect_uri_allowed(
     app: &client::Model,
     redirect_uri: &str,
 ) -> Result<bool, DbErr> {
-    if !app.active {
+    // Look up the current database state, not a potentially stale model.
+    if get_client(db, &app.client_id).await?.is_none() {
         return Ok(false);
     }
     let Some(kind) = ClientType::parse(&app.client_type) else {
@@ -216,6 +217,6 @@ mod tests {
         assert_eq!(client_redirect_uri::Entity::find().all(&db).await.unwrap().len(), 1);
         assert!(disable_client(&db, &id).await.unwrap());
         assert!(get_client(&db, &id).await.unwrap().is_none());
-        assert!(!is_redirect_uri_allowed(&db, &app, &callback).await.unwrap_or(false) || !get_client(&db, &id).await.unwrap().is_some());
+        assert!(!is_redirect_uri_allowed(&db, &app, &callback).await.unwrap());
     }
 }
