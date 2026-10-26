@@ -370,7 +370,11 @@ mod tests {
         let (db, req, uid, sid) = fixture().await;
         let code = issue(&db, &req, uid, sid).await.unwrap();
         client_redirect_uri::Entity::delete_many()
-            .filter(client_redirect_uri::COLUMN.redirect_uri.eq(&req.redirect_uri))
+            .filter(
+                client_redirect_uri::COLUMN
+                    .redirect_uri
+                    .eq(&req.redirect_uri),
+            )
             .exec(&db)
             .await
             .unwrap();
