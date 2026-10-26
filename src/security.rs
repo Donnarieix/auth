@@ -93,6 +93,19 @@ pub async fn require_same_origin(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
+    if request.uri().path() == "/token" && *request.method() == Method::POST {
+        // The OAuth token endpoint is a backchannel exchange authenticated by
+        // the one-use grant + PKCE, not by browser cookies. Never accept a
+        // cross-site browser form as an alternative to a backchannel request.
+        if request.headers().contains_key(header::ORIGIN)
+            || request.headers().get("sec-fetch-site")
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|site| site != "none")
+        {
+            return Err(StatusCode::FORBIDDEN);
+        }
+        return Ok(next.run(request).await);
+    }
     if matches!(
         *request.method(),
         Method::POST | Method::PUT | Method::PATCH | Method::DELETE
