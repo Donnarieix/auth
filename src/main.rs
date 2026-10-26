@@ -14,7 +14,9 @@ use crate::{
     state::AppState,
 };
 
+mod admin;
 mod entities;
+mod oidc;
 mod middleware;
 mod routes;
 mod schema;
@@ -55,6 +57,16 @@ fn router(state: AppState) -> Router {
 #[tokio::main]
 async fn main() {
     let _ = dotenvy::dotenv();
+
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if !args.is_empty() {
+        if let Err(err) = admin::run(&args).await {
+            eprintln!("{err}");
+            std::process::exit(2);
+        }
+        return;
+    }
+
     let state = AppState::new().await;
     let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, router(state)).await.unwrap();
