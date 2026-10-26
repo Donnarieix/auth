@@ -432,13 +432,9 @@ mod tests {
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 
         let (private, _) = keypair();
-        let configured = SigningKeys::from_pem(
-            "https://auth.example.test",
-            "example-2026",
-            &private,
-            &[],
-        )
-        .unwrap();
+        let configured =
+            SigningKeys::from_pem("https://auth.example.test", "example-2026", &private, &[])
+                .unwrap();
         state.oidc_keys = Some(Arc::new(configured));
         let response = router(state)
             .oneshot(Request::builder().uri(url).body(Body::empty()).unwrap())
