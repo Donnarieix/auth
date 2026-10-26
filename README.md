@@ -132,6 +132,37 @@ The internal Authorization Code service now issues random 32-byte codes bound to
 
 There is **still no** public `/authorize`, `/token`, `/userinfo`, `/.well-known/openid-configuration` or `/jwks` endpoint yet. The request validator and grant lifecycle are internal only; they never return JWTs. It requires `response_type=code`, `scope=openid`, explicit long `state` and `nonce`, and a canonical S256 PKCE challenge. Client secrets, administrator accounts, the separate developer interface, signed JWTs, key rotation, discovery and integration testing are subsequent work under #12. **Do not integrate an application or expose the service until those are completed.**
 
+## OpenID Connect signing keys (not a complete provider yet)
+
+The server has a **non-public RS256 ID-token signing helper**. It does not yet expose an OIDC authorization or token exchange endpoint. The public `GET /.well-known/jwks.json` route is registered **only if a valid signing key is configured**. The returned JWKS includes RSA public components (`n`, `e`), `kid`, `alg=RS256`, and `use=sig`; private material never appears there.
+
+Configure a real HTTPS issuer separately, then generate a **new key outside Git** on the trusted host:
+
+```sh
+umask 077
+mkdir -p "$HOME/.local/share/donnarieix-auth/keys"
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 \
+  -out "$HOME/.local/share/donnarieix-auth/keys/oidc-2026.private.pem"
+chmod 600 "$HOME/.local/share/donnarieix-auth/keys/oidc-2026.private.pem"
+```
+
+Set these variables in the **local untracked** `.env`:
+
+```text
+AUTH_PUBLIC_ORIGIN=https://auth.example.com
+OIDC_SIGNING_KID=oidc-2026
+OIDC_SIGNING_KEY_FILE=/absolute/path/to/oidc-2026.private.pem
+# OIDC_OLD_PUBLIC_KEYS_DIR=/absolute/path/to/public-keys
+```
+
+The signing key must be a valid PKCS#8 RSA private PEM of **at least 2048 bits** with exponent 65537. On Unix the application refuses private keys readable by the group or other users. The environment must declare an HTTPS origin, although **this configuration does not itself enable TLS or public deployment**. Never commit real private keys, test fixtures containing private keys or `.env`.
+
+**Rotation:** create a new private key and unique `OIDC_SIGNING_KID`. Convert the old key to its **public** PEM before retiring it using `openssl pkey -in old.private.pem -pubout -out public-keys/old-kid.pem`. Keep old *public only* keys in `OIDC_OLD_PUBLIC_KEYS_DIR` until every token signed by the old key has expired (plus client cache and clock-skew allowances). Never reuse a `kid` for a different key. Updating files requires a controlled process restart; live rotation is not implemented.
+
+An ID token includes only the user's stable UUID `sub` and mandatory OIDC claims by default. `profile` and `email` claims are conditional on authorized scopes. The authorization-code issuer and redeemer both require explicit, non-revoked per-client user consent. The token verifier **must** validate signature, expected issuer/audience, expiration, nonce and the client's `state` when that flow is implemented.
+
+**Not production-ready:** `/.well-known/openid-configuration`, `/authorize`, `/token`, refresh/access-token handling, redirect/consent UI and interoperability tests are still missing. The JWKS endpoint being available does not mean SSO authentication is functional.
+
 ## Implementation tracking
 
 See the repository issues for the scope, decisions and planned work. All imported code is subject to review and CI checks before being merged.

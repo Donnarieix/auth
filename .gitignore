@@ -3,3 +3,9 @@
 /data/*.db
 /data/*.db-*
 /data/*.sqlite*
+
+# OIDC signing secrets: keep all key material outside the repository
+/secrets/
+/keys/
+*.private.pem
+*.key
