@@ -2,14 +2,27 @@
 //! Private RSA material is loaded only from a local, untracked file.
 use std::{collections::HashSet, fs, path::Path};
 
-use axum::{Json, extract::State, http::{StatusCode, header}, response::IntoResponse};
+use axum::{
+    Json,
+    extract::State,
+    http::{StatusCode, header},
+    response::IntoResponse,
+};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
-use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::{DecodePrivateKey, DecodePublicKey}, traits::PublicKeyParts};
+use rsa::{
+    RsaPrivateKey, RsaPublicKey,
+    pkcs8::{DecodePrivateKey, DecodePublicKey},
+    traits::PublicKeyParts,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::{entities::user, oidc::{consent::Scopes, grants::RedeemedGrant}, state::AppState};
+use crate::{
+    entities::user,
+    oidc::{consent::Scopes, grants::RedeemedGrant},
+    state::AppState,
+};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct PublicJwk {
@@ -63,7 +76,9 @@ pub enum IssueError {
 
 fn valid_kid(kid: &str) -> bool {
     (8..=64).contains(&kid.len())
-        && kid.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+        && kid
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
 }
 
 fn to_jwk(kid: &str, public: &RsaPublicKey) -> Result<PublicJwk, String> {
@@ -92,7 +107,11 @@ impl SigningKeys {
         private_pem: &str,
         previous: &[(String, String)],
     ) -> Result<Self, String> {
-        if !issuer.starts_with("https://") || issuer.ends_with('/') || issuer.contains('?') || issuer.contains('#') {
+        if !issuer.starts_with("https://")
+            || issuer.ends_with('/')
+            || issuer.contains('?')
+            || issuer.contains('#')
+        {
             return Err("OIDC issuer must be a canonical HTTPS origin".into());
         }
         let parsed = RsaPrivateKey::from_pkcs8_pem(private_pem)
@@ -123,7 +142,9 @@ impl SigningKeys {
         let kid = std::env::var("OIDC_SIGNING_KID").ok();
         let (key_file, kid) = match (key_file, kid) {
             (Some(file), Some(kid)) => (file, kid),
-            (None, None) if std::env::var_os("OIDC_OLD_PUBLIC_KEYS_DIR").is_none() => return Ok(None),
+            (None, None) if std::env::var_os("OIDC_OLD_PUBLIC_KEYS_DIR").is_none() => {
+                return Ok(None);
+            }
             _ => return Err("OIDC signing key and key ID must be configured together".into()),
         };
         if !issuer.starts_with("https://") {
@@ -133,31 +154,48 @@ impl SigningKeys {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(path).map_err(|_| "Cannot stat signing key file")?.permissions().mode();
+            let mode = fs::metadata(path)
+                .map_err(|_| "Cannot stat signing key file")?
+                .permissions()
+                .mode();
             if mode & 0o077 != 0 {
-                return Err("OIDC signing private key must not be group/world accessible (chmod 600)".into());
+                return Err(
+                    "OIDC signing private key must not be group/world accessible (chmod 600)"
+                        .into(),
+                );
             }
         }
         let private = fs::read_to_string(path).map_err(|_| "Cannot read signing key file")?;
         let mut old = Vec::new();
         if let Ok(dir) = std::env::var("OIDC_OLD_PUBLIC_KEYS_DIR") {
-            for entry in fs::read_dir(dir).map_err(|_| "Cannot open previous public-key directory")? {
+            for entry in
+                fs::read_dir(dir).map_err(|_| "Cannot open previous public-key directory")?
+            {
                 let entry = entry.map_err(|_| "Cannot read public-key directory entry")?;
                 let path = entry.path();
                 if path.extension().is_none_or(|ext| ext != "pem") || !path.is_file() {
-                    return Err("Only regular .pem public key files are allowed in the key directory".into());
+                    return Err(
+                        "Only regular .pem public key files are allowed in the key directory"
+                            .into(),
+                    );
                 }
-                let old_kid = path.file_stem().and_then(|s| s.to_str()).ok_or("Invalid old key filename")?.to_owned();
+                let old_kid = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .ok_or("Invalid old key filename")?
+                    .to_owned();
                 let pem = fs::read_to_string(&path).map_err(|_| "Cannot read old public key")?;
                 old.push((old_kid, pem));
             }
         }
-        old.sort_by(|a,b| a.0.cmp(&b.0));
+        old.sort_by(|a, b| a.0.cmp(&b.0));
         Self::from_pem(issuer, &kid, &private, &old).map(Some)
     }
 
     pub fn public_jwks(&self) -> Jwks {
-        Jwks { keys: self.jwks.keys.clone() }
+        Jwks {
+            keys: self.jwks.keys.clone(),
+        }
     }
 
     /// Only invoke after the authenticated, consented authorization code was
@@ -191,8 +229,16 @@ impl SigningKeys {
             nonce: grant.nonce.clone(),
             auth_time: authenticated_at.timestamp(),
             preferred_username: scopes.profile.then(|| account.username.clone()),
-            name: if scopes.profile { account.display_name.clone() } else { None },
-            picture: if scopes.profile { account.avatar_url.clone() } else { None },
+            name: if scopes.profile {
+                account.display_name.clone()
+            } else {
+                None
+            },
+            picture: if scopes.profile {
+                account.avatar_url.clone()
+            } else {
+                None
+            },
             email: scopes.email.then(|| account.email.clone()),
             email_verified: scopes.email.then_some(account.email_verified),
         };
@@ -207,16 +253,19 @@ pub async fn jwks(State(state): State<AppState>) -> Result<impl IntoResponse, St
     let Some(keys) = state.oidc_keys.as_ref() else {
         return Err(StatusCode::NOT_FOUND);
     };
-    Ok(([(header::CACHE_CONTROL, "public, max-age=300")], Json(keys.public_jwks())))
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(keys.public_jwks()),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
-    use jsonwebtoken::{decode, decode_header, DecodingKey, Validation};
+    use jsonwebtoken::{DecodingKey, Validation, decode, decode_header};
     use rand_core::OsRng;
     use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};
+    use uuid::Uuid;
 
     fn keypair() -> (String, String) {
         let private = RsaPrivateKey::new(&mut OsRng, 2048).unwrap();
@@ -245,7 +294,8 @@ mod tests {
     #[test]
     fn signed_tokens_validate_by_public_jwk_and_respect_scopes() {
         let (pem, _) = keypair();
-        let keys = SigningKeys::from_pem("https://auth.example.test", "active-2026", &pem, &[]).unwrap();
+        let keys =
+            SigningKeys::from_pem("https://auth.example.test", "active-2026", &pem, &[]).unwrap();
         let user = account();
         let mut grant = RedeemedGrant {
             user_id: user.id,
@@ -281,7 +331,9 @@ mod tests {
             v.set_issuer(&["https://auth.example.test"]);
             v.set_audience(&["client-1"]);
             v
-        }).unwrap().claims;
+        })
+        .unwrap()
+        .claims;
         assert_eq!(claims.email.as_deref(), Some("private@example.com"));
         assert_eq!(claims.preferred_username.as_deref(), Some("tester"));
     }
@@ -290,17 +342,40 @@ mod tests {
     fn key_rotation_keeps_only_public_material_for_previous_keys() {
         let (old_private, old_public) = keypair();
         let (new_private, _) = keypair();
-        let previous = SigningKeys::from_pem("https://auth.example.test", "old-2026", &old_private, &[]).unwrap();
-        let rotating = SigningKeys::from_pem("https://auth.example.test", "new-2026", &new_private, &[("old-2026".into(), old_public)]).unwrap();
+        let previous =
+            SigningKeys::from_pem("https://auth.example.test", "old-2026", &old_private, &[])
+                .unwrap();
+        let rotating = SigningKeys::from_pem(
+            "https://auth.example.test",
+            "new-2026",
+            &new_private,
+            &[("old-2026".into(), old_public)],
+        )
+        .unwrap();
         assert_eq!(rotating.public_jwks().keys.len(), 2);
-        assert!(SigningKeys::from_pem("https://auth.example.test", "new-2026", &new_private, &[("new-2026".into(), "invalid".into())]).is_err());
+        assert!(
+            SigningKeys::from_pem(
+                "https://auth.example.test",
+                "new-2026",
+                &new_private,
+                &[("new-2026".into(), "invalid".into())]
+            )
+            .is_err()
+        );
         let user = account();
         let grant = RedeemedGrant {
-            user_id: user.id, client_id: "client-1".into(),
-            scope: "openid".into(), nonce: "unique-auth-nonce-1234".into(),
+            user_id: user.id,
+            client_id: "client-1".into(),
+            scope: "openid".into(),
+            nonce: "unique-auth-nonce-1234".into(),
         };
         let old_token = previous.sign_id_token(&grant, &user, Utc::now()).unwrap();
-        let old_jwk = rotating.public_jwks().keys.into_iter().find(|j| j.kid == "old-2026").unwrap();
+        let old_jwk = rotating
+            .public_jwks()
+            .keys
+            .into_iter()
+            .find(|j| j.kid == "old-2026")
+            .unwrap();
         let decoding = DecodingKey::from_rsa_components(&old_jwk.n, &old_jwk.e).unwrap();
         let mut val = Validation::new(Algorithm::RS256);
         val.set_audience(&["client-1"]);
@@ -312,16 +387,25 @@ mod tests {
     #[test]
     fn signer_rejects_unverified_accounts_and_mismatched_subject() {
         let (pem, _) = keypair();
-        let keys = SigningKeys::from_pem("https://auth.example.test", "active-2026", &pem, &[]).unwrap();
+        let keys =
+            SigningKeys::from_pem("https://auth.example.test", "active-2026", &pem, &[]).unwrap();
         let mut user = account();
         let grant = RedeemedGrant {
-            user_id: user.id, client_id: "client-1".into(),
-            scope: "openid".into(), nonce: "unique-auth-nonce-1234".into(),
+            user_id: user.id,
+            client_id: "client-1".into(),
+            scope: "openid".into(),
+            nonce: "unique-auth-nonce-1234".into(),
         };
         user.email_verified = false;
-        assert_eq!(keys.sign_id_token(&grant, &user, Utc::now()).unwrap_err(), IssueError::InvalidGrant);
+        assert_eq!(
+            keys.sign_id_token(&grant, &user, Utc::now()).unwrap_err(),
+            IssueError::InvalidGrant
+        );
         user.email_verified = true;
         user.id = Uuid::new_v4();
-        assert_eq!(keys.sign_id_token(&grant, &user, Utc::now()).unwrap_err(), IssueError::InvalidGrant);
+        assert_eq!(
+            keys.sign_id_token(&grant, &user, Utc::now()).unwrap_err(),
+            IssueError::InvalidGrant
+        );
     }
 }
