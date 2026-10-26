@@ -9,6 +9,9 @@ use tokio::net::TcpListener;
 use crate::{
     middleware::auth,
     oidc::signing::jwks,
+    oidc::authorization::{authorization_page, approve, deny},
+    oidc::discovery::discovery,
+    oidc::token::{token, userinfo},
     routes::account::{confirm_reset, confirm_verification, request_reset, request_verification},
     routes::{health::health, login::login, logout::logout, me::me, register::register},
     security::require_same_origin,
@@ -57,7 +60,14 @@ fn router(state: AppState) -> Router {
             require_same_origin,
         ));
     if state.oidc_keys.is_some() {
-        app = app.route("/.well-known/jwks.json", get(jwks));
+        app = app
+            .route("/.well-known/jwks.json", get(jwks))
+            .route("/.well-known/openid-configuration", get(discovery))
+            .route("/authorize", get(authorization_page))
+            .route("/authorize/approve", post(approve))
+            .route("/authorize/deny", post(deny))
+            .route("/token", post(token))
+            .route("/userinfo", get(userinfo));
     }
     app.with_state(state)
 }
