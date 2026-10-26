@@ -3,21 +3,30 @@ use std::sync::Arc;
 use sea_orm::{Database, DatabaseConnection};
 use tokio::sync::Semaphore;
 
-use crate::{schema, services::abuse::AbuseGuard};
+use crate::{
+    schema,
+    services::{abuse::AbuseGuard, email::Mailer},
+};
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: DatabaseConnection,
     pub abuse: Arc<AbuseGuard>,
     pub hash_slots: Arc<Semaphore>,
+    pub mailer: Mailer,
 }
 
 impl AppState {
     pub fn with_db(db: DatabaseConnection) -> Self {
+        Self::with_mailer(db, Mailer::Disabled)
+    }
+
+    pub fn with_mailer(db: DatabaseConnection, mailer: Mailer) -> Self {
         Self {
             db,
             abuse: Arc::new(AbuseGuard::default()),
             hash_slots: Arc::new(Semaphore::new(4)),
+            mailer,
         }
     }
 
@@ -32,6 +41,6 @@ impl AppState {
             .await
             .expect("Schema migration refused or failed; do not reuse an old prototype database");
 
-        Self::with_db(db)
+        Self::with_mailer(db, Mailer::from_env())
     }
 }
