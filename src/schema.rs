@@ -193,6 +193,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn upgrades_version_one_without_losing_accounts() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL)".to_owned(),
+        ))
+        .await
+        .unwrap();
+        for sql in super::INITIAL_SCHEMA {
+            db.execute_raw(super::statement(sql)).await.unwrap();
+        }
+        db.execute_raw(super::statement(
+            "INSERT INTO schema_migrations (version) VALUES (1)",
+        ))
+        .await
+        .unwrap();
+        let existing = account("upgrade@example.com", "upgrade")
+            .insert(&db)
+            .await
+            .unwrap();
+
+        apply(&db).await.expect("upgrade v1 to v2");
+        apply(&db).await.expect("migration stays idempotent");
+        assert!(
+            user::Entity::find_by_id(existing.id)
+                .one(&db)
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'account_tokens'",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT version FROM schema_migrations WHERE version = 2",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
+    }
+
+    #[tokio::test]
     async fn unique_email_username_and_mutable_profile() {
         let db = empty_db().await;
         let first = account("hello@example.com", "TestUser")
