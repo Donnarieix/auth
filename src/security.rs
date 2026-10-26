@@ -5,7 +5,8 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use axum_extra::extract::cookie::{Cookie, SameSite, time::Duration};
+use axum_extra::extract::cookie::{Cookie, SameSite};
+use time::Duration;
 
 use crate::state::AppState;
 
