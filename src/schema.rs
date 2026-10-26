@@ -52,7 +52,6 @@ const INITIAL_SCHEMA: &[&str] = &[
     )"#,
 ];
 
-
 const RECOVERY_SCHEMA: &[&str] = &[
     r#"CREATE TABLE account_tokens (
         id TEXT PRIMARY KEY NOT NULL,
@@ -86,15 +85,21 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
     .await?;
 
     if tx
-        .query_one_raw(statement("SELECT version FROM schema_migrations WHERE version > 2 LIMIT 1"))
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version > 2 LIMIT 1",
+        ))
         .await?
         .is_some()
     {
-        return Err(DbErr::Custom("Database schema is newer than this server".into()));
+        return Err(DbErr::Custom(
+            "Database schema is newer than this server".into(),
+        ));
     }
 
     let has_v1 = tx
-        .query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 1"))
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 1",
+        ))
         .await?
         .is_some();
 
@@ -113,18 +118,26 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         for sql in INITIAL_SCHEMA {
             tx.execute_raw(statement(sql)).await?;
         }
-        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (1)")).await?;
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (1)",
+        ))
+        .await?;
     }
 
     let has_v2 = tx
-        .query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 2"))
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 2",
+        ))
         .await?
         .is_some();
     if !has_v2 {
         for sql in RECOVERY_SCHEMA {
             tx.execute_raw(statement(sql)).await?;
         }
-        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (2)")).await?;
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (2)",
+        ))
+        .await?;
     }
 
     tx.commit().await

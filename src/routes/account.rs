@@ -56,7 +56,13 @@ pub async fn request_reset(
     State(state): State<AppState>,
     Json(payload): Json<EmailRequest>,
 ) -> StatusCode {
-    request_code(state, payload.email, Purpose::ResetPassword, "reset_password").await
+    request_code(
+        state,
+        payload.email,
+        Purpose::ResetPassword,
+        "reset_password",
+    )
+    .await
 }
 
 pub async fn confirm_verification(

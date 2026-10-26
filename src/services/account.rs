@@ -12,10 +12,7 @@ use uuid::Uuid;
 use crate::{
     entities::{account_token, password_credential, session, user},
     services::{
-        email::Mail,
-        identity::valid_password,
-        password,
-        session::generate_token,
+        email::Mail, identity::valid_password, password, session::generate_token,
         user::get_user_by_email,
     },
     state::AppState,
@@ -103,7 +100,9 @@ pub async fn issue(state: &AppState, email: &str, purpose: Purpose) -> Result<()
     };
     if state.mailer.send(mail).await.is_err() {
         // Never expose delivery failures based on whether an account exists.
-        let _ = account_token::Entity::delete_by_id(id).exec(&state.db).await;
+        let _ = account_token::Entity::delete_by_id(id)
+            .exec(&state.db)
+            .await;
         return Err(());
     }
     Ok(())
@@ -221,7 +220,12 @@ pub async fn consume(
     tx.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO account_security_events (id,user_id,event_kind,created_at) VALUES (?,?,?,?)",
-        [Uuid::new_v4().into(), account.id.into(), event.into(), now.into()],
+        [
+            Uuid::new_v4().into(),
+            account.id.into(),
+            event.into(),
+            now.into(),
+        ],
     ))
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

@@ -5,7 +5,11 @@ use uuid::Uuid;
 
 use crate::{
     entities,
-    services::{account::{self, Purpose}, identity::validate_registration, password},
+    services::{
+        account::{self, Purpose},
+        identity::validate_registration,
+        password,
+    },
     state::AppState,
 };
 

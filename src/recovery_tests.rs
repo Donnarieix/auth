@@ -7,9 +7,7 @@ use axum::{
     response::Response,
 };
 use chrono::Utc;
-use sea_orm::{
-    ColumnTrait, Database, EntityTrait, QueryFilter, sea_query::Expr,
-};
+use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter, sea_query::Expr};
 use tokio::{sync::mpsc, time::timeout};
 use tower::ServiceExt;
 
@@ -46,7 +44,10 @@ async fn register(app: &Router, email: &str) {
     let body = format!(
         r#"{{"email":"{email}","username":"testuser","password":"Initial password 123!"}}"#
     );
-    assert_eq!(post(app, "/register", &body).await.status(), StatusCode::ACCEPTED);
+    assert_eq!(
+        post(app, "/register", &body).await.status(),
+        StatusCode::ACCEPTED
+    );
 }
 
 async fn received(rx: &mut mpsc::UnboundedReceiver<Mail>) -> String {
@@ -75,11 +76,15 @@ async fn verification_codes_are_hashed_single_use_and_email_bound() {
 
     let confirm = format!(r#"{{"token":"{first}"}}"#);
     assert_eq!(
-        post(&app, "/email/verification/confirm", &confirm).await.status(),
+        post(&app, "/email/verification/confirm", &confirm)
+            .await
+            .status(),
         StatusCode::NO_CONTENT
     );
     assert_eq!(
-        post(&app, "/email/verification/confirm", &confirm).await.status(),
+        post(&app, "/email/verification/confirm", &confirm)
+            .await
+            .status(),
         StatusCode::BAD_REQUEST
     );
     let account = user::Entity::find().one(&state.db).await.unwrap().unwrap();
@@ -94,7 +99,11 @@ async fn verification_codes_are_hashed_single_use_and_email_bound() {
         .unwrap();
     assert!(
         !user::Entity::find_by_id(account.id)
-            .one(&state.db).await.unwrap().unwrap().email_verified
+            .one(&state.db)
+            .await
+            .unwrap()
+            .unwrap()
+            .email_verified
     );
     // A previously issued token for the old email may not validate the new email.
     user::Entity::update_many()
@@ -104,7 +113,9 @@ async fn verification_codes_are_hashed_single_use_and_email_bound() {
         .await
         .unwrap();
     assert_eq!(
-        post(&app, "/email/verification/confirm", &confirm).await.status(),
+        post(&app, "/email/verification/confirm", &confirm)
+            .await
+            .status(),
         StatusCode::BAD_REQUEST
     );
 }
@@ -115,19 +126,34 @@ async fn expired_code_is_rejected_and_unknown_email_is_not_disclosed() {
     register(&app, "known@example.com").await;
     let token = received(&mut rx).await;
     account_token::Entity::update_many()
-        .col_expr(account_token::COLUMN.expires_at, Expr::value(Utc::now() - chrono::Duration::minutes(1)))
+        .col_expr(
+            account_token::COLUMN.expires_at,
+            Expr::value(Utc::now() - chrono::Duration::minutes(1)),
+        )
         .exec(&state.db)
         .await
         .unwrap();
     let confirm = format!(r#"{{"token":"{token}"}}"#);
     assert_eq!(
-        post(&app, "/email/verification/confirm", &confirm).await.status(),
+        post(&app, "/email/verification/confirm", &confirm)
+            .await
+            .status(),
         StatusCode::BAD_REQUEST
     );
     let unknown = r#"{"email":"absent@example.com"}"#;
     let existing = r#"{"email":"known@example.com"}"#;
-    assert_eq!(post(&app, "/password/reset/request", unknown).await.status(), StatusCode::ACCEPTED);
-    assert_eq!(post(&app, "/password/reset/request", existing).await.status(), StatusCode::ACCEPTED);
+    assert_eq!(
+        post(&app, "/password/reset/request", unknown)
+            .await
+            .status(),
+        StatusCode::ACCEPTED
+    );
+    assert_eq!(
+        post(&app, "/password/reset/request", existing)
+            .await
+            .status(),
+        StatusCode::ACCEPTED
+    );
 }
 
 #[tokio::test]
@@ -136,29 +162,47 @@ async fn password_recovery_revokes_sessions_and_old_password() {
     register(&app, "known@example.com").await;
     let _ = received(&mut rx).await;
     let initial_login = r#"{"email":"known@example.com","password":"Initial password 123!"}"#;
-    assert_eq!(post(&app, "/login", initial_login).await.status(), StatusCode::OK);
+    assert_eq!(
+        post(&app, "/login", initial_login).await.status(),
+        StatusCode::OK
+    );
 
     assert_eq!(
-        post(&app, "/password/reset/request", r#"{"email":"known@example.com"}"#)
-            .await.status(),
+        post(
+            &app,
+            "/password/reset/request",
+            r#"{"email":"known@example.com"}"#
+        )
+        .await
+        .status(),
         StatusCode::ACCEPTED
     );
     let token = received(&mut rx).await;
-    let request = format!(
-        r#"{{"token":"{token}","new_password":"Updated password 123!"}}"#
-    );
+    let request = format!(r#"{{"token":"{token}","new_password":"Updated password 123!"}}"#);
     assert_eq!(
-        post(&app, "/password/reset/confirm", &request).await.status(),
+        post(&app, "/password/reset/confirm", &request)
+            .await
+            .status(),
         StatusCode::NO_CONTENT
     );
     assert_eq!(
-        post(&app, "/password/reset/confirm", &request).await.status(),
+        post(&app, "/password/reset/confirm", &request)
+            .await
+            .status(),
         StatusCode::BAD_REQUEST
     );
-    assert_eq!(post(&app, "/login", initial_login).await.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
-        post(&app, "/login", r#"{"email":"known@example.com","password":"Updated password 123!"}"#)
-            .await.status(),
+        post(&app, "/login", initial_login).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        post(
+            &app,
+            "/login",
+            r#"{"email":"known@example.com","password":"Updated password 123!"}"#
+        )
+        .await
+        .status(),
         StatusCode::OK
     );
     // Previous session revoked; a successful new login creates a new session.
@@ -167,7 +211,10 @@ async fn password_recovery_revokes_sessions_and_old_password() {
     assert!(!sessions[0].active);
 
     let credential = password_credential::Entity::find()
-        .one(&state.db).await.unwrap().unwrap();
+        .one(&state.db)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(!credential.password_hash.contains("Updated password 123!"));
 }
 
@@ -176,16 +223,23 @@ async fn recovery_code_is_invalidated_after_email_change() {
     let (app, state, mut rx) = test_app().await;
     register(&app, "known@example.com").await;
     let _ = received(&mut rx).await;
-    post(&app, "/password/reset/request", r#"{"email":"known@example.com"}"#).await;
+    post(
+        &app,
+        "/password/reset/request",
+        r#"{"email":"known@example.com"}"#,
+    )
+    .await;
     let token = received(&mut rx).await;
     user::Entity::update_many()
         .col_expr(user::COLUMN.email, Expr::value("changed@example.com"))
-        .exec(&state.db).await.unwrap();
-    let request = format!(
-        r#"{{"token":"{token}","new_password":"Updated password 123!"}}"#
-    );
+        .exec(&state.db)
+        .await
+        .unwrap();
+    let request = format!(r#"{{"token":"{token}","new_password":"Updated password 123!"}}"#);
     assert_eq!(
-        post(&app, "/password/reset/confirm", &request).await.status(),
+        post(&app, "/password/reset/confirm", &request)
+            .await
+            .status(),
         StatusCode::BAD_REQUEST
     );
 }

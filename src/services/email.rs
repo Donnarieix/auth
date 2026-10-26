@@ -2,8 +2,7 @@
 use std::{sync::Arc, time::Duration};
 
 use lettre::{
-    Message, SmtpTransport, Transport,
-    message::Mailbox,
+    Message, SmtpTransport, Transport, message::Mailbox,
     transport::smtp::authentication::Credentials,
 };
 use tokio::task;
@@ -32,8 +31,10 @@ impl Mailer {
             Ok(host) if !host.is_empty() => host,
             _ => return Self::Disabled,
         };
-        let user = std::env::var("SMTP_USERNAME").expect("SMTP_USERNAME required when SMTP_HOST set");
-        let pass = std::env::var("SMTP_PASSWORD").expect("SMTP_PASSWORD required when SMTP_HOST set");
+        let user =
+            std::env::var("SMTP_USERNAME").expect("SMTP_USERNAME required when SMTP_HOST set");
+        let pass =
+            std::env::var("SMTP_PASSWORD").expect("SMTP_PASSWORD required when SMTP_HOST set");
         let from = std::env::var("MAIL_FROM")
             .expect("MAIL_FROM required when SMTP_HOST set")
             .parse::<Mailbox>()
