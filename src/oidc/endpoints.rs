@@ -201,8 +201,10 @@ struct Profile {
 fn unauthorized() -> Response {
     (
         StatusCode::UNAUTHORIZED,
-        [(header::WWW_AUTHENTICATE, "Bearer error=\"invalid_token\""),
-         (header::CACHE_CONTROL, "no-store")],
+        [
+            (header::WWW_AUTHENTICATE, "Bearer error=\"invalid_token\""),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
     )
         .into_response()
 }
