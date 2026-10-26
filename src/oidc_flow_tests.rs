@@ -16,7 +16,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use crate::{
-    entities::{session, user},
+    entities::{password_credential, session, user},
     oidc::{
         s256_challenge,
         signing::{IdToken, SigningKeys},
@@ -74,6 +74,16 @@ async fn fixture() -> (Router, String, String) {
         display_name: Set(Some("Test User".into())),
         avatar_url: Set(None),
         active: Set(true),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&db)
+    .await
+    .unwrap();
+
+    password_credential::ActiveModel {
+        user_id: Set(user_id),
+        password_hash: Set("original-hash".into()),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -282,4 +292,22 @@ async fn invalid_clients_and_missing_browser_sessions_never_receive_codes() {
     )
     .await;
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let csrf = request(
+        &app,
+        Method::POST,
+        "/authorize/approve",
+        authorization_form(&client),
+        &[("origin", "https://evil.example"), ("content-type", "application/x-www-form-urlencoded")],
+    ).await;
+    assert_eq!(csrf.status(), StatusCode::FORBIDDEN);
+
+    let malformed = request(
+        &app,
+        Method::GET,
+        "/authorize?response_type=code&client_id=unregistered",
+        String::new(),
+        &[],
+    ).await;
+    assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
 }
