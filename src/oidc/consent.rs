@@ -2,8 +2,8 @@
 //! This module only persists or checks an explicit approval. No implicit grants.
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
-    TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    QueryFilter, TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -92,12 +92,8 @@ pub async fn approve(
     tx.commit().await
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "OIDC authorization endpoint is not yet enabled")
-)]
-pub async fn approved(
-    db: &DatabaseConnection,
+pub async fn approved<C: ConnectionTrait>(
+    db: &C,
     user_id: Uuid,
     client_id: Uuid,
     scope: &str,
