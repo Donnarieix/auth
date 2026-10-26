@@ -67,8 +67,7 @@ fn router(state: AppState) -> Router {
             .route("/token", post(endpoints::token))
             .route("/userinfo", get(endpoints::userinfo));
     }
-    app
-        .layer(DefaultBodyLimit::max(16 * 1024))
+    app.layer(DefaultBodyLimit::max(16 * 1024))
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             require_same_origin,
