@@ -374,7 +374,9 @@ mod tests {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         db.execute_raw(super::statement(
             "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL)",
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
         for sql in super::INITIAL_SCHEMA
             .iter()
             .chain(super::RECOVERY_SCHEMA)
@@ -385,24 +387,40 @@ mod tests {
         }
         db.execute_raw(super::statement(
             "INSERT INTO schema_migrations (version) VALUES (1), (2), (3), (4)",
-        )).await.unwrap();
+        ))
+        .await
+        .unwrap();
         db.execute_raw(super::statement(
             "INSERT INTO clients(id,client_id,client_type,name,created_at,active) VALUES ('00000000-0000-4000-8000-000000000001', 'known-client', 'desktop', 'Existing', '2026-01-01T00:00:00Z', 1)",
         )).await.unwrap();
 
         apply(&db).await.expect("upgrade from v4");
         apply(&db).await.expect("idempotent after v5");
-        let row = db.query_one_raw(super::statement(
-            "SELECT client_type FROM clients WHERE client_id='known-client'",
-        )).await.unwrap().unwrap();
+        let row = db
+            .query_one_raw(super::statement(
+                "SELECT client_type FROM clients WHERE client_id='known-client'",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
         let kind: String = row.try_get("", "client_type").unwrap();
         assert_eq!(kind, "desktop");
-        assert!(db.query_one_raw(super::statement(
-            "SELECT version FROM schema_migrations WHERE version=5",
-        )).await.unwrap().is_some());
-        assert!(db.query_one_raw(super::statement(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='authorization_codes'",
-        )).await.unwrap().is_some());
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT version FROM schema_migrations WHERE version=5",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='authorization_codes'",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
     }
 
     #[tokio::test]

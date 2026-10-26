@@ -397,7 +397,9 @@ mod tests {
         let second = redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER);
         let (a, b) = tokio::join!(first, second);
         let successes = usize::from(a.is_ok()) + usize::from(b.is_ok());
-        assert_eq!(successes, 1, "the authorization code must be consumed exactly once");
+        assert_eq!(
+            successes, 1,
+            "the authorization code must be consumed exactly once"
+        );
     }
-
 }
