@@ -52,7 +52,10 @@ impl Scopes {
 
 /// Explicit approval must only be called by a trusted, CSRF-protected consent
 /// UI. It is intentionally not exposed by any HTTP endpoint yet.
-#[cfg_attr(not(test), expect(dead_code, reason = "OIDC consent UI is not yet implemented"))]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "OIDC consent UI is not yet implemented")
+)]
 pub async fn approve(
     db: &DatabaseConnection,
     user_id: Uuid,
@@ -89,7 +92,10 @@ pub async fn approve(
     tx.commit().await
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "OIDC authorization endpoint is not yet enabled"))]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "OIDC authorization endpoint is not yet enabled")
+)]
 pub async fn approved(
     db: &DatabaseConnection,
     user_id: Uuid,
@@ -108,7 +114,13 @@ pub async fn approved(
         .is_some_and(|granted| granted.contains(&requested)))
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "OIDC consent management interface is not yet enabled"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "OIDC consent management interface is not yet enabled"
+    )
+)]
 pub async fn revoke(
     db: &DatabaseConnection,
     user_id: Uuid,
