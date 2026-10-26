@@ -8,11 +8,10 @@ use axum::{
 use chrono::Utc;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use rsa::{
-    RsaPrivateKey, RsaPublicKey,
+    RsaPrivateKey,
     pkcs8::{EncodePrivateKey, LineEnding},
 };
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database};
-use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 use uuid::Uuid;
 

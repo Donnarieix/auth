@@ -303,7 +303,6 @@ mod tests {
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
             auth_time: Utc::now(),
-            auth_time: Utc::now(),
         };
         let token = keys.sign_id_token(&grant, &user, Utc::now()).unwrap();
         let hdr = decode_header(&token).unwrap();
