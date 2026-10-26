@@ -298,8 +298,12 @@ async fn invalid_clients_and_missing_browser_sessions_never_receive_codes() {
         Method::POST,
         "/authorize/approve",
         authorization_form(&client),
-        &[("origin", "https://evil.example"), ("content-type", "application/x-www-form-urlencoded")],
-    ).await;
+        &[
+            ("origin", "https://evil.example"),
+            ("content-type", "application/x-www-form-urlencoded"),
+        ],
+    )
+    .await;
     assert_eq!(csrf.status(), StatusCode::FORBIDDEN);
 
     let malformed = request(
@@ -308,6 +312,7 @@ async fn invalid_clients_and_missing_browser_sessions_never_receive_codes() {
         "/authorize?response_type=code&client_id=unregistered",
         String::new(),
         &[],
-    ).await;
+    )
+    .await;
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
 }
