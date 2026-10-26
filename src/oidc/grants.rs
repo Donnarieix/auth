@@ -33,6 +33,7 @@ pub struct RedeemedGrant {
     pub client_id: String,
     pub scope: String,
     pub nonce: String,
+    pub authenticated_at: chrono::DateTime<Utc>,
 }
 
 pub async fn issue(
@@ -196,6 +197,7 @@ pub async fn redeem(
         client_id: app.client_id,
         scope: record.scope,
         nonce: record.nonce,
+        authenticated_at: browser.created_at,
     })
 }
 
