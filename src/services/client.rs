@@ -217,9 +217,14 @@ mod tests {
         schema::apply(&db).await.unwrap();
 
         let callback = "https://app.example.com/oauth/callback".to_owned();
-        let id = register_client(&db, "Test Web", ClientType::Web, std::slice::from_ref(&callback))
-            .await
-            .unwrap();
+        let id = register_client(
+            &db,
+            "Test Web",
+            ClientType::Web,
+            std::slice::from_ref(&callback),
+        )
+        .await
+        .unwrap();
         let app = get_client(&db, &id).await.unwrap().unwrap();
         assert_eq!(app.client_type, "web");
         assert!(is_redirect_uri_allowed(&db, &app, &callback).await.unwrap());
