@@ -1,4 +1,3 @@
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use axum::{Json, extract::State, http::StatusCode};
 use axum_extra::extract::{
     CookieJar,
@@ -10,6 +9,8 @@ use serde::Deserialize;
 use crate::{
     entities,
     services::{
+        identity::normalize_email,
+        password::{self, DUMMY_HASH},
         session::{create_session, get_active_session},
         user::{get_password_credential, get_user_by_email},
     },
@@ -27,26 +28,29 @@ pub async fn login(
     jar: CookieJar,
     Json(payload): Json<LoginRequest>,
 ) -> Result<CookieJar, StatusCode> {
-    let email = payload.email.trim().to_ascii_lowercase();
-    let user = get_user_by_email(&state, &email)
-        .await?
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-
-    if !user.active {
+    let email = normalize_email(&payload.email).ok_or(StatusCode::UNAUTHORIZED)?;
+    if payload.password.len() > 512 || payload.password.is_empty() {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    let credential = get_password_credential(&state, user.id)
-        .await?
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-    let hash = PasswordHash::new(&credential.password_hash)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if Argon2::default()
-        .verify_password(payload.password.as_bytes(), &hash)
-        .is_err()
-    {
-        return Err(StatusCode::UNAUTHORIZED);
+    if !state.abuse.allow("login", &email, 80, 12).await {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
+
+    let user = get_user_by_email(&state, &email).await?;
+    let credential = match &user {
+        Some(user) => get_password_credential(&state, user.id).await?,
+        None => None,
+    };
+    let stored_hash = credential
+        .map(|credential| credential.password_hash)
+        .unwrap_or_else(|| DUMMY_HASH.to_owned());
+    // One expensive verification even when the email does not exist.
+    let valid = password::verify(&state, payload.password, stored_hash).await?;
+
+    let user = user
+        .filter(|user| user.active && valid)
+        .ok_or(StatusCode::UNAUTHORIZED)?;
 
     if let Some(existing_session) = get_active_session(&state, user.clone()).await? {
         let mut session: entities::session::ActiveModel = existing_session.into();
@@ -62,7 +66,7 @@ pub async fn login(
     let cookie = Cookie::build(("session", token))
         .http_only(true)
         .same_site(SameSite::Lax)
-        // Local development only. #11 must require Secure cookies under HTTPS.
+        // Still local-only: secure deployment cookies/CSRF are tracked by #11.
         .path("/")
         .build();
 
