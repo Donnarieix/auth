@@ -56,13 +56,13 @@ Accounts have immutable UUIDs, unique case-insensitive emails and usernames, opt
 
 `POST /register` accepts `{ "email": "...", "username": "...", "password": "..." }`. Usernames are limited to 3–32 ASCII letters, digits, hyphens or underscores. Emails are accepted in a deliberately restricted ASCII format (internationalized addresses are not yet supported). Passwords permit Unicode and must be 12–128 characters, up to 512 UTF-8 bytes, without NUL.
 
-For syntactically valid requests, registration responds **202 Accepted**, whether a new account was created or the email/username is already in use. The response **does not confirm that the account exists**. No verification email is sent yet; that workflow belongs to #10. Invalid values return 400; excessive requests return 429.
+For syntactically valid requests, registration responds **202 Accepted**, whether a new account was created or the email/username is already in use. The response **does not confirm that the account exists**. When SMTP is configured, registration schedules an email-verification code; see the verification and recovery section below. Invalid values return 400; excessive requests return 429.
 
 `POST /login` accepts `email` and `password`. Invalid credentials and unknown users have the same 401 response; a dummy Argon2id verification reduces account-existence timing differences. Password hashes have random salts and are computed in bounded blocking tasks.
 
 The server applies conservative in-process 60-second rate limits to registration and login, both globally and for each normalized email. These are intended to defend the **single-process localhost prototype only**: limits reset on restart, are not shared by multiple server processes, and are not a substitute for gateway-level limits, monitoring, IP/device-based controls and security testing.
 
-**This is not production-ready.** Registration cannot yet confirm email ownership; login issues a development cookie without `Secure`. Session hardening, CSRF protection, password reset, robust anti-automation measures and OIDC remain in issues #10–#12.
+**This is not production-ready.** An email-verification and password-recovery API exists, but actual SMTP delivery still requires configuration. The prototype login currently permits accounts with unverified emails, and cookies still lack `Secure`. Session hardening, CSRF protection, robust anti-automation measures and OIDC remain outstanding in #11–#12.
 
 ## Email verification and account recovery (prototype)
 
