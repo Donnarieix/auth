@@ -1,17 +1,12 @@
 use axum::{Json, extract::State, http::StatusCode};
-use axum_extra::extract::{
-    CookieJar,
-    cookie::{Cookie, SameSite},
-};
-use sea_orm::{ActiveModelTrait, ActiveValue::Set};
+use axum_extra::extract::CookieJar;
 use serde::Deserialize;
 
 use crate::{
-    entities,
     services::{
         identity::normalize_email,
         password::{self, DUMMY_HASH},
-        session::{create_session, get_active_session},
+        session::create_session,
         user::{get_password_credential, get_user_by_email},
     },
     state::AppState,
@@ -52,23 +47,10 @@ pub async fn login(
         .filter(|user| user.active && valid)
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
-    if let Some(existing_session) = get_active_session(&state, user.clone()).await? {
-        let mut session: entities::session::ActiveModel = existing_session.into();
-        session.active = Set(false);
-        session
-            .update(&state.db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    }
-
+    // Independent devices keep their own sessions. Only logout of the exact
+    // cookie or a password reset revokes an existing session.
     let token = create_session(&state, user).await?;
 
-    let cookie = Cookie::build(("session", token))
-        .http_only(true)
-        .same_site(SameSite::Lax)
-        // Still local-only: secure deployment cookies/CSRF are tracked by #11.
-        .path("/")
-        .build();
-
+    let cookie = state.security.issue_cookie(token);
     Ok(jar.add(cookie))
 }
