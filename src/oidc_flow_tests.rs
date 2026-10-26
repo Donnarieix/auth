@@ -278,7 +278,7 @@ async fn complete_code_pkce_consent_jwks_userinfo_and_replay_protection() {
 
 #[tokio::test]
 async fn invalid_clients_and_missing_browser_sessions_never_receive_codes() {
-    let (app, client, _) = fixture().await;
+    let (app, client, cookie) = fixture().await;
     let form = authorization_form(&client);
     let response = request(
         &app,
@@ -299,6 +299,7 @@ async fn invalid_clients_and_missing_browser_sessions_never_receive_codes() {
         "/authorize/approve",
         authorization_form(&client),
         &[
+            ("cookie", &cookie),
             ("origin", "https://evil.example"),
             ("content-type", "application/x-www-form-urlencoded"),
         ],
