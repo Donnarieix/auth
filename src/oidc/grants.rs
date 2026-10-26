@@ -389,4 +389,15 @@ mod tests {
             Err(GrantError::InvalidRequest)
         ));
     }
+    #[tokio::test]
+    async fn concurrent_redemption_has_at_most_one_success() {
+        let (db, req, uid, sid) = fixture().await;
+        let code = issue(&db, &req, uid, sid).await.unwrap();
+        let first = redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER);
+        let second = redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER);
+        let (a, b) = tokio::join!(first, second);
+        let successes = usize::from(a.is_ok()) + usize::from(b.is_ok());
+        assert_eq!(successes, 1, "the authorization code must be consumed exactly once");
+    }
+
 }
