@@ -3,7 +3,7 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
-    sea_query::Expr, TransactionTrait,
+    TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 
