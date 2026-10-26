@@ -324,11 +324,14 @@ mod tests {
             .unwrap();
         let kind: String = found.try_get("", "client_type").unwrap();
         assert_eq!(kind, "web");
-        assert!(db
-            .query_one_raw(super::statement(
+        assert!(
+            db.query_one_raw(super::statement(
                 "SELECT version FROM schema_migrations WHERE version = 4",
             ))
-            .await.unwrap().is_some());
+            .await
+            .unwrap()
+            .is_some()
+        );
     }
 
     #[tokio::test]

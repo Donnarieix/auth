@@ -83,7 +83,9 @@ pub async fn register_client(
         return Err(DbErr::Custom("Invalid client display name".into()));
     }
     if uris.is_empty() || uris.len() > 12 {
-        return Err(DbErr::Custom("A client requires 1 to 12 redirect URIs".into()));
+        return Err(DbErr::Custom(
+            "A client requires 1 to 12 redirect URIs".into(),
+        ));
     }
     let unique: std::collections::HashSet<_> = uris.iter().collect();
     if unique.len() != uris.len() {
@@ -170,13 +172,18 @@ pub async fn disable_client(db: &DatabaseConnection, public_id: &str) -> Result<
 mod tests {
     use sea_orm::{Database, EntityTrait};
 
-    use super::{ClientType, disable_client, get_client, is_redirect_uri_allowed, register_client, validate_redirect_uri};
+    use super::{
+        ClientType, disable_client, get_client, is_redirect_uri_allowed, register_client,
+        validate_redirect_uri,
+    };
     use crate::{entities::client_redirect_uri, schema};
 
     #[test]
     fn redirects_are_strictly_scoped_to_client_types() {
         assert!(validate_redirect_uri(ClientType::Web, "https://app.example.com/callback").is_ok());
-        assert!(validate_redirect_uri(ClientType::Desktop, "http://127.0.0.1:43516/callback").is_ok());
+        assert!(
+            validate_redirect_uri(ClientType::Desktop, "http://127.0.0.1:43516/callback").is_ok()
+        );
         assert!(validate_redirect_uri(ClientType::Desktop, "http://[::1]:43516/callback").is_ok());
         for uri in [
             "http://app.example.com/callback",
@@ -186,7 +193,10 @@ mod tests {
             "javascript:alert(1)",
             "https://app.example.com/callback\r\nheader:bad",
         ] {
-            assert!(validate_redirect_uri(ClientType::Web, uri).is_err(), "{uri}");
+            assert!(
+                validate_redirect_uri(ClientType::Web, uri).is_err(),
+                "{uri}"
+            );
         }
         for uri in [
             "http://localhost:3000/callback",
@@ -194,7 +204,10 @@ mod tests {
             "http://192.168.1.5:3000/callback",
             "http://example.com:3000/callback",
         ] {
-            assert!(validate_redirect_uri(ClientType::Desktop, uri).is_err(), "{uri}");
+            assert!(
+                validate_redirect_uri(ClientType::Desktop, uri).is_err(),
+                "{uri}"
+            );
         }
     }
 
@@ -205,16 +218,49 @@ mod tests {
 
         let callback = "https://app.example.com/oauth/callback".to_owned();
         let id = register_client(&db, "Test Web", ClientType::Web, &[callback.clone()])
-            .await.unwrap();
+            .await
+            .unwrap();
         let app = get_client(&db, &id).await.unwrap().unwrap();
         assert_eq!(app.client_type, "web");
         assert!(is_redirect_uri_allowed(&db, &app, &callback).await.unwrap());
-        assert!(!is_redirect_uri_allowed(&db, &app, "https://app.example.com/oauth/callback/").await.unwrap());
-        assert!(!is_redirect_uri_allowed(&db, &app, "https://evil.example/oauth/callback").await.unwrap());
-        assert!(!is_redirect_uri_allowed(&db, &app, "https://app.example.com/oauth/callback?next=evil").await.unwrap());
+        assert!(
+            !is_redirect_uri_allowed(&db, &app, "https://app.example.com/oauth/callback/")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !is_redirect_uri_allowed(&db, &app, "https://evil.example/oauth/callback")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !is_redirect_uri_allowed(
+                &db,
+                &app,
+                "https://app.example.com/oauth/callback?next=evil"
+            )
+            .await
+            .unwrap()
+        );
 
-        assert!(register_client(&db, "Bad", ClientType::Web, &["http://evil.example/callback".into()]).await.is_err());
-        assert_eq!(client_redirect_uri::Entity::find().all(&db).await.unwrap().len(), 1);
+        assert!(
+            register_client(
+                &db,
+                "Bad",
+                ClientType::Web,
+                &["http://evil.example/callback".into()]
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            client_redirect_uri::Entity::find()
+                .all(&db)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
         assert!(disable_client(&db, &id).await.unwrap());
         assert!(get_client(&db, &id).await.unwrap().is_none());
         assert!(!is_redirect_uri_allowed(&db, &app, &callback).await.unwrap());
