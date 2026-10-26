@@ -251,7 +251,8 @@ async fn complete_code_pkce_consent_jwks_userinfo_and_replay_protection() {
     )
     .await;
     assert_eq!(userinfo.status(), StatusCode::OK);
-    let info: serde_json::Value = serde_json::from_slice(&to_bytes(userinfo.into_body(), 100_000).await.unwrap()).unwrap();
+    let info: serde_json::Value =
+        serde_json::from_slice(&to_bytes(userinfo.into_body(), 100_000).await.unwrap()).unwrap();
     assert_eq!(info["sub"], identity.sub);
     assert_eq!(info["email"], "verified@example.test");
 
