@@ -7,8 +7,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::CookieJar;
-use sea_orm::{EntityTrait, ModelTrait};
-use serde::Deserialize;
+use sea_orm::ModelTrait;
 use sha2::{Digest, Sha256};
 use url::Url;
 

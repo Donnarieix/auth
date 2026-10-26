@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     entities::{client, oidc_access_token, user},
-    oidc::{consent, grants, signing::SigningKeys},
+    oidc::{consent, grants},
     services::session::generate_token,
     state::AppState,
 };
@@ -234,15 +234,9 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> impl
             } else {
                 None
             },
-            email: scopes.email.then(|| account.email),
+            email: scopes.email.then_some(account.email),
             email_verified: scopes.email.then_some(account.email_verified),
         }),
     ))
 }
 
-/// The current Authorization Code profile only permits PKCE public clients.
-#[expect(
-    dead_code,
-    reason = "Signer exposed only when OIDC endpoints are enabled"
-)]
-fn _requires_signer(_: &SigningKeys) {}

@@ -50,10 +50,6 @@ impl ProviderMetadata {
 
 /// This route is NOT wired into the HTTP router until /authorize and /token
 /// are implemented and tested. Misleading metadata would be dangerous.
-#[expect(
-    dead_code,
-    reason = "Provider discovery is gated on end-to-end OIDC readiness"
-)]
 pub async fn discovery(
     State(state): State<AppState>,
 ) -> Result<Json<ProviderMetadata>, StatusCode> {
