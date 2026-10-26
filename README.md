@@ -132,9 +132,9 @@ The internal Authorization Code service now issues random 32-byte codes bound to
 
 There is **still no** public `/authorize`, `/token`, `/userinfo`, `/.well-known/openid-configuration` or `/jwks` endpoint yet. The request validator and grant lifecycle are internal only; they never return JWTs. It requires `response_type=code`, `scope=openid`, explicit long `state` and `nonce`, and a canonical S256 PKCE challenge. Client secrets, administrator accounts, the separate developer interface, signed JWTs, key rotation, discovery and integration testing are subsequent work under #12. **Do not integrate an application or expose the service until those are completed.**
 
-## OpenID Connect signing keys (not a complete provider yet)
+## OpenID Connect signing keys and Authorization Code provider (development only)
 
-The server has a **non-public RS256 ID-token signing helper**. It does not yet expose an OIDC authorization or token exchange endpoint. The public `GET /.well-known/jwks.json` route is registered **only if a valid signing key is configured**. The returned JWKS includes RSA public components (`n`, `e`), `kid`, `alg=RS256`, and `use=sig`; private material never appears there.
+The server provides an **RS256 Authorization Code + PKCE S256 provider** with browser login, explicit user consent, signed ID tokens and short-lived opaque access tokens. These routes are registered only when the server starts with valid HTTPS issuer and signing-key configuration. The public `GET /.well-known/jwks.json` route is registered **only if a valid signing key is configured**. The returned JWKS includes RSA public components (`n`, `e`), `kid`, `alg=RS256`, and `use=sig`; private material never appears there.
 
 Configure a real HTTPS issuer separately, then generate a **new key outside Git** on the trusted host:
 
@@ -159,9 +159,33 @@ The signing key must be a valid PKCS#8 RSA private PEM of **at least 2048 bits**
 
 **Rotation:** create a new private key and unique `OIDC_SIGNING_KID`. Convert the old key to its **public** PEM before retiring it using `openssl pkey -in old.private.pem -pubout -out public-keys/old-kid.pem`. Keep old *public only* keys in `OIDC_OLD_PUBLIC_KEYS_DIR` until every token signed by the old key has expired (plus client cache and clock-skew allowances). Never reuse a `kid` for a different key. Updating files requires a controlled process restart; live rotation is not implemented.
 
-An ID token includes only the user's stable UUID `sub` and mandatory OIDC claims by default. `profile` and `email` claims are conditional on authorized scopes. The authorization-code issuer and redeemer both require explicit, non-revoked per-client user consent. The token verifier **must** validate signature, expected issuer/audience, expiration, nonce and the client's `state` when that flow is implemented.
+An ID token includes only the user's stable UUID `sub` and mandatory OIDC claims by default. `profile` and `email` claims are conditional on authorized scopes. The authorization-code issuer and redeemer both require explicit, non-revoked per-client user consent. Clients **must** validate signature, expected issuer/audience, expiration, nonce and their stored `state`. The independent test client uses the standard Rust `openidconnect` library.
 
-**Not production-ready:** `/.well-known/openid-configuration`, `/authorize`, `/token`, refresh/access-token handling, redirect/consent UI and interoperability tests are still missing. The JWKS endpoint being available does not mean SSO authentication is functional.
+### OIDC development protocol
+
+All OIDC routes require configured signing keys and a canonical HTTPS `AUTH_PUBLIC_ORIGIN`; otherwise they are **not exposed**. A trusted HTTPS reverse proxy must forward to Auth's loopback listener (`127.0.0.1:3000`); declaring the issuer alone does not provide TLS.
+
+| Route | Purpose |
+|---|---|
+| `GET /.well-known/openid-configuration` | Public OIDC metadata |
+| `GET /.well-known/jwks.json` | Public RS256 verification keys |
+| `GET /authorize` | Validate registered redirect and S256 challenge; render login or explicit consent |
+| `POST /authorize/login` | Browser password login, verified accounts only |
+| `POST /authorize/consent` | Explicit approve/deny; issue short-lived code |
+| `POST /token` | Backchannel form-encoded `authorization_code` exchange with `client_id`, exact `redirect_uri`, and `code_verifier` |
+| `GET /userinfo` | Scoped claims for a 5-minute opaque Bearer token |
+
+Clients are registered using the existing local admin CLI, **never through a public unauthenticated registration API**:
+
+```sh
+cargo run -- client add desktop "Auth Test Client" "http://127.0.0.1:4000/callback"
+```
+
+The returned `client_id` identifies a **public client with no client secret**. Authorization Code + PKCE S256 is mandatory. Request the `openid` scope; `profile` and `email` are optional. Login requires an existing verified email account and an active browser session. The user explicitly approves each authorization request. Code expiry is 5 minutes and consumption is atomic; a reissued or revoked consent prevents issuance/redemption. The ID token is signed RS256 and lasts 5 minutes, and the UserInfo bearer token is stored only as a hash in SQLite (migration v7). UserInfo denies revoked sessions and disabled users/clients. No refresh token is issued.
+
+The `/token` endpoint is a **backchannel** and must be called without browser `Origin` headers. Other state-changing routes require a matching `Origin` and reject cross-site requests. Never expose raw authorization codes, Bearer tokens or PKCE verifiers in logs or diagnostic pages.
+
+**Security / operational limitations:** not production-ready. SMTP/email ownership confirmation needs a real working configuration; OAuth sessions depend on a properly secured HTTPS reverse proxy; distributed rate limiting, hardened cookie/header and edge setup, accessibility and account UX, external-client interoperability testing, operational key rotation and an independent security audit are still required. Do not publish this service until these checks are complete.
 
 ## Implementation tracking
 

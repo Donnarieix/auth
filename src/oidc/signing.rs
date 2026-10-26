@@ -299,9 +299,11 @@ mod tests {
         let user = account();
         let mut grant = RedeemedGrant {
             user_id: user.id,
+            session_id: Uuid::new_v4(),
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
+            authenticated_at: Utc::now(),
         };
         let token = keys.sign_id_token(&grant, &user, Utc::now()).unwrap();
         let hdr = decode_header(&token).unwrap();
@@ -365,9 +367,11 @@ mod tests {
         let user = account();
         let grant = RedeemedGrant {
             user_id: user.id,
+            session_id: Uuid::new_v4(),
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
+            authenticated_at: Utc::now(),
         };
         let old_token = previous.sign_id_token(&grant, &user, Utc::now()).unwrap();
         let old_jwk = rotating
@@ -392,9 +396,11 @@ mod tests {
         let mut user = account();
         let grant = RedeemedGrant {
             user_id: user.id,
+            session_id: Uuid::new_v4(),
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
+            authenticated_at: Utc::now(),
         };
         user.email_verified = false;
         assert_eq!(

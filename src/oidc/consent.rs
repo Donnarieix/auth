@@ -7,7 +7,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::entities::{client, oidc_consent, user};
+use crate::entities::{client, oidc_access_token, oidc_consent, user};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scopes {
@@ -52,10 +52,6 @@ impl Scopes {
 
 /// Explicit approval must only be called by a trusted, CSRF-protected consent
 /// UI. It is intentionally not exposed by any HTTP endpoint yet.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "OIDC consent UI is not yet implemented")
-)]
 pub async fn approve(
     db: &DatabaseConnection,
     user_id: Uuid,
@@ -70,6 +66,14 @@ pub async fn approve(
     if !account.is_some_and(|u| u.active && u.email_verified) || !app.is_some_and(|a| a.active) {
         return Err(DbErr::Custom("Account or client not authorized".into()));
     }
+
+    // Re-approval must not resurrect previously revoked or over-scoped
+    // access tokens. Every consent change invalidates existing bearer tokens.
+    oidc_access_token::Entity::delete_many()
+        .filter(oidc_access_token::COLUMN.user_id.eq(user_id))
+        .filter(oidc_access_token::COLUMN.client_id.eq(client_id))
+        .exec(&tx)
+        .await?;
 
     // Never accumulate permissions implicitly. The exact scopes confirmed
     // by the user replace the previous set instead of silently expanding it.
@@ -123,13 +127,20 @@ pub async fn revoke(
     client_id: Uuid,
 ) -> Result<bool, DbErr> {
     let now = Utc::now();
+    let tx = db.begin().await?;
     let result = oidc_consent::Entity::update_many()
         .col_expr(oidc_consent::COLUMN.revoked_at, Expr::value(now))
         .filter(oidc_consent::COLUMN.user_id.eq(user_id))
         .filter(oidc_consent::COLUMN.client_id.eq(client_id))
         .filter(oidc_consent::COLUMN.revoked_at.is_null())
-        .exec(db)
+        .exec(&tx)
         .await?;
+    oidc_access_token::Entity::delete_many()
+        .filter(oidc_access_token::COLUMN.user_id.eq(user_id))
+        .filter(oidc_access_token::COLUMN.client_id.eq(client_id))
+        .exec(&tx)
+        .await?;
+    tx.commit().await?;
     Ok(result.rows_affected == 1)
 }
 
