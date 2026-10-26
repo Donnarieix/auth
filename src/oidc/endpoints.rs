@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     entities::{client, oidc_access_token, session, user},
-    oidc::{consent::Scopes, grants},
+    oidc::{consent::{self, Scopes}, grants},
     services::{client::get_client, session::generate_token},
     state::AppState,
 };
@@ -256,7 +256,15 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> Resp
         Ok(Some(c)) if c.active => c,
         _ => return unauthorized(),
     };
-    let _ = (browser, app);
+    // A user revoking consent must immediately lose access to UserInfo,
+    // even while the opaque bearer token has time remaining.
+    if !consent::approved(&state.db, account.id, app.id, &record.scope)
+        .await
+        .unwrap_or(false)
+    {
+        return unauthorized();
+    }
+    let _ = browser;
     let scopes = match Scopes::parse(&record.scope) {
         Ok(scopes) => scopes,
         _ => return unauthorized(),
