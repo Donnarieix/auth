@@ -105,7 +105,7 @@ async fn verification_codes_are_hashed_single_use_and_email_bound() {
             .unwrap()
             .email_verified
     );
-    // A previously issued token for the old email may not validate the new email.
+    // Obtain an unconsumed code for the current address, then change it.
     user::Entity::update_many()
         .col_expr(user::COLUMN.email, Expr::value("known@example.com"))
         .filter(user::COLUMN.id.eq(account.id))
@@ -113,7 +113,21 @@ async fn verification_codes_are_hashed_single_use_and_email_bound() {
         .await
         .unwrap();
     assert_eq!(
-        post(&app, "/email/verification/confirm", &confirm)
+        post(&app, "/email/verification/request", r#"{"email":"known@example.com"}"#)
+            .await
+            .status(),
+        StatusCode::ACCEPTED
+    );
+    let pending = received(&mut rx).await;
+    user::Entity::update_many()
+        .col_expr(user::COLUMN.email, Expr::value("new@example.com"))
+        .filter(user::COLUMN.id.eq(account.id))
+        .exec(&state.db)
+        .await
+        .unwrap();
+    let stale = format!(r#"{{"token":"{pending}"}}"#);
+    assert_eq!(
+        post(&app, "/email/verification/confirm", &stale)
             .await
             .status(),
         StatusCode::BAD_REQUEST
