@@ -85,6 +85,25 @@ const CLIENT_REGISTRY_SCHEMA: &[&str] = &[
        CHECK (client_type IN ('web', 'desktop'))"#,
 ];
 
+const AUTHORIZATION_CODE_SCHEMA: &[&str] = &[
+    r#"CREATE TABLE authorization_codes (
+        id TEXT PRIMARY KEY NOT NULL,
+        code_hash BLOB NOT NULL UNIQUE,
+        client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        redirect_uri TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        nonce TEXT NOT NULL,
+        code_challenge TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        consumed_at TEXT
+    )"#,
+    "CREATE INDEX authorization_codes_user_idx ON authorization_codes(user_id)",
+    "CREATE INDEX authorization_codes_expiry_idx ON authorization_codes(expires_at)",
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -99,7 +118,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 4 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 5 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -181,6 +200,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (4)",
+        ))
+        .await?;
+    }
+
+    let has_v5 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 5",
+        ))
+        .await?
+        .is_some();
+    if !has_v5 {
+        for sql in AUTHORIZATION_CODE_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (5)",
         ))
         .await?;
     }
@@ -327,6 +362,60 @@ mod tests {
         assert!(
             db.query_one_raw(super::statement(
                 "SELECT version FROM schema_migrations WHERE version = 4",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn client_registry_upgrades_to_grants_without_losing_clients() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_raw(super::statement(
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL)",
+        ))
+        .await
+        .unwrap();
+        for sql in super::INITIAL_SCHEMA
+            .iter()
+            .chain(super::RECOVERY_SCHEMA)
+            .chain(super::SESSION_SECURITY_SCHEMA)
+            .chain(super::CLIENT_REGISTRY_SCHEMA)
+        {
+            db.execute_raw(super::statement(sql)).await.unwrap();
+        }
+        db.execute_raw(super::statement(
+            "INSERT INTO schema_migrations (version) VALUES (1), (2), (3), (4)",
+        ))
+        .await
+        .unwrap();
+        db.execute_raw(super::statement(
+            "INSERT INTO clients(id,client_id,client_type,name,created_at,active) VALUES ('00000000-0000-4000-8000-000000000001', 'known-client', 'desktop', 'Existing', '2026-01-01T00:00:00Z', 1)",
+        )).await.unwrap();
+
+        apply(&db).await.expect("upgrade from v4");
+        apply(&db).await.expect("idempotent after v5");
+        let row = db
+            .query_one_raw(super::statement(
+                "SELECT client_type FROM clients WHERE client_id='known-client'",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let kind: String = row.try_get("", "client_type").unwrap();
+        assert_eq!(kind, "desktop");
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT version FROM schema_migrations WHERE version=5",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='authorization_codes'",
             ))
             .await
             .unwrap()
