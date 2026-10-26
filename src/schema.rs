@@ -72,6 +72,14 @@ const RECOVERY_SCHEMA: &[&str] = &[
     )"#,
 ];
 
+const SESSION_SECURITY_SCHEMA: &[&str] = &[
+    r#"CREATE TRIGGER users_disable_revokes_sessions
+        AFTER UPDATE OF active ON users
+        FOR EACH ROW WHEN NEW.active = 0 AND OLD.active <> NEW.active
+        BEGIN UPDATE sessions SET active = 0 WHERE user_id = NEW.id; END"#,
+    "UPDATE sessions SET active = 0 WHERE user_id IN (SELECT id FROM users WHERE active = 0)",
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -86,7 +94,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 2 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 3 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -136,6 +144,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (2)",
+        ))
+        .await?;
+    }
+
+    let has_v3 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 3",
+        ))
+        .await?
+        .is_some();
+    if !has_v3 {
+        for sql in SESSION_SECURITY_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (3)",
         ))
         .await?;
     }
