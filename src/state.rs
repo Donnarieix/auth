@@ -5,6 +5,7 @@ use tokio::sync::Semaphore;
 
 use crate::{
     schema,
+    security::SecurityConfig,
     services::{abuse::AbuseGuard, email::Mailer},
 };
 
@@ -14,6 +15,7 @@ pub struct AppState {
     pub abuse: Arc<AbuseGuard>,
     pub hash_slots: Arc<Semaphore>,
     pub mailer: Mailer,
+    pub security: SecurityConfig,
 }
 
 impl AppState {
@@ -28,6 +30,7 @@ impl AppState {
             abuse: Arc::new(AbuseGuard::default()),
             hash_slots: Arc::new(Semaphore::new(4)),
             mailer,
+            security: SecurityConfig::development(),
         }
     }
 
@@ -42,6 +45,9 @@ impl AppState {
             .await
             .expect("Schema migration refused or failed; do not reuse an old prototype database");
 
-        Self::with_mailer(db, Mailer::from_env())
+        let security = SecurityConfig::from_env().expect("Invalid AUTH_PUBLIC_ORIGIN");
+        let mut state = Self::with_mailer(db, Mailer::from_env());
+        state.security = security;
+        state
     }
 }
