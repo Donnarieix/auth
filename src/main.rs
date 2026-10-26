@@ -35,11 +35,11 @@ mod state;
 #[cfg(test)]
 mod integration_tests;
 #[cfg(test)]
+mod oidc_flow_tests;
+#[cfg(test)]
 mod recovery_tests;
 #[cfg(test)]
 mod session_tests;
-#[cfg(test)]
-mod oidc_flow_tests;
 
 fn router(state: AppState) -> Router {
     let protected = Router::new()

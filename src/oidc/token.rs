@@ -239,4 +239,3 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> impl
         }),
     ))
 }
-
