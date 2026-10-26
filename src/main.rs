@@ -10,6 +10,7 @@ use crate::{
     middleware::auth,
     routes::account::{confirm_reset, confirm_verification, request_reset, request_verification},
     routes::{health::health, login::login, logout::logout, me::me, register::register},
+    security::require_same_origin,
     state::AppState,
 };
 
@@ -17,6 +18,7 @@ mod entities;
 mod middleware;
 mod routes;
 mod schema;
+mod security;
 mod services;
 mod state;
 
@@ -24,6 +26,8 @@ mod state;
 mod integration_tests;
 #[cfg(test)]
 mod recovery_tests;
+#[cfg(test)]
+mod session_tests;
 
 fn router(state: AppState) -> Router {
     let protected = Router::new()
@@ -41,13 +45,16 @@ fn router(state: AppState) -> Router {
         .route("/password/reset/confirm", post(confirm_reset))
         .merge(protected)
         .layer(DefaultBodyLimit::max(16 * 1024))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            require_same_origin,
+        ))
         .with_state(state)
 }
 
 #[tokio::main]
 async fn main() {
     let _ = dotenvy::dotenv();
-
     let state = AppState::new().await;
     let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
     axum::serve(listener, router(state)).await.unwrap();

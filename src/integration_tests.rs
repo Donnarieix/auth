@@ -25,6 +25,7 @@ async fn post(app: Router, path: &str, payload: &str) -> Response {
         .method("POST")
         .uri(path)
         .header("content-type", "application/json")
+        .header("origin", "http://127.0.0.1:3000")
         .body(Body::from(payload.to_owned()))
         .unwrap();
     app.oneshot(request).await.unwrap()

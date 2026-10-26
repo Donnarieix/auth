@@ -20,33 +20,20 @@ pub async fn get_session(
     Ok(session)
 }
 
-pub async fn get_active_session(
-    state: &AppState,
-    user: entities::user::Model,
-) -> Result<Option<entities::session::Model>, StatusCode> {
-    let sessions = entities::session::Entity::find()
-        .filter(entities::session::COLUMN.user_id.eq(user.id))
-        .filter(entities::session::COLUMN.active.eq(true))
-        .one(&state.db)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok(sessions)
-}
-
 pub async fn create_session(
     state: &AppState,
     user: entities::user::Model,
 ) -> Result<String, StatusCode> {
     let (token, hash) = generate_token();
 
+    let now = chrono::Utc::now();
     let session = entities::session::ActiveModel {
         id: Set(Uuid::new_v4()),
         user_id: Set(user.id),
         token_hash: Set(hash),
-        created_at: Set(chrono::Utc::now()),
-        expires_at: Set(chrono::Utc::now() + chrono::Duration::hours(1)),
-        last_use: Set(chrono::Utc::now()),
+        created_at: Set(now),
+        expires_at: Set(now + chrono::Duration::hours(1)),
+        last_use: Set(now),
         active: Set(true),
     };
 

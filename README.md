@@ -62,7 +62,28 @@ For syntactically valid requests, registration responds **202 Accepted**, whethe
 
 The server applies conservative in-process 60-second rate limits to registration and login, both globally and for each normalized email. These are intended to defend the **single-process localhost prototype only**: limits reset on restart, are not shared by multiple server processes, and are not a substitute for gateway-level limits, monitoring, IP/device-based controls and security testing.
 
-**This is not production-ready.** An email-verification and password-recovery API exists, but actual SMTP delivery still requires configuration. The prototype login currently permits accounts with unverified emails, and cookies still lack `Secure`. Session hardening, CSRF protection, robust anti-automation measures and OIDC remain outstanding in #11–#12.
+**This is not production-ready.** Verification/recovery endpoints are present but SMTP still requires configuration. The prototype login currently permits accounts with unverified emails. Production deployment and OIDC remain outstanding.
+
+## Session security (development prototype)
+
+- Login creates a **fresh independent session** for each browser or device. Sessions have **absolute expiration of one hour** (not renewed on access); a successful login never silently revokes another device.
+- Logout (`POST /logout`) revokes **only the calling session**. Password recovery and disabling an account revoke **all sessions**; re-enabling an account cannot restore them (SQLite schema migration v3).
+- `GET /me` requires an active session that has not expired and belongs to an active user. Expired/revoked cookies are rejected; session tokens are never stored as plaintext in SQLite.
+- Cookies are `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, `Max-Age=3600`. Lax is selected to preserve future cross-site, top-level OpenID Connect navigations.
+- Local HTTP mode (the default, bound **only** to `127.0.0.1:3000`) sets `auth_session` without `Secure`, and is **not a public deployment option**.
+- To declare the externally visible **HTTPS** origin behind a future trusted reverse proxy, configure `AUTH_PUBLIC_ORIGIN=https://auth.example.com`. In that mode cookies are `Secure` and named `__Host-auth_session`; insecure origins other than the exact loopback development origin are rejected at startup. Configuring this value **does not enable TLS**, change the listening address, or make the prototype production-ready.
+- **CSRF prevention:** all state-changing routes (including login, registration, email recovery and logout) require an exact `Origin` header equal to the configured origin; missing or mismatching origins are rejected with **403**. Requests advertising an incompatible `Sec-Fetch-Site` are also rejected. `SameSite=Lax` adds defense in depth; no CORS permissions are enabled for other origins. This requires same-origin browser calls; CLI tests must explicitly provide the corresponding `Origin` header.
+
+Example loopback request:
+
+```sh
+curl -i http://127.0.0.1:3000/health
+curl -i -H 'Origin: http://127.0.0.1:3000' -H 'Content-Type: application/json' \
+  -d '{"email":"user@example.com","password":"example-password"}' \
+  http://127.0.0.1:3000/login
+```
+
+This does **not** replace the security review, hardened edge controls, HTTPS termination, account-verification policy, browser frontend and interoperable OIDC that remain before production.
 
 ## Email verification and account recovery (prototype)
 
