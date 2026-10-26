@@ -408,4 +408,56 @@ mod tests {
             IssueError::InvalidGrant
         );
     }
+
+    #[tokio::test]
+    async fn jwks_route_is_public_only_when_keys_are_configured() {
+        use std::sync::Arc;
+
+        use axum::{
+            body::{Body, to_bytes},
+            http::{Request, StatusCode, header},
+        };
+        use sea_orm::Database;
+        use tower::ServiceExt;
+
+        use crate::{router, state::AppState};
+
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        let mut state = AppState::with_db(db);
+        let url = "/.well-known/jwks.json";
+        let missing = router(state.clone())
+            .oneshot(Request::builder().uri(url).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+
+        let (private, _) = keypair();
+        let configured = SigningKeys::from_pem(
+            "https://auth.example.test",
+            "example-2026",
+            &private,
+            &[],
+        )
+        .unwrap();
+        state.oidc_keys = Some(Arc::new(configured));
+        let response = router(state)
+            .oneshot(Request::builder().uri(url).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CACHE_CONTROL).unwrap(),
+            "public, max-age=300"
+        );
+        let json = to_bytes(response.into_body(), 8192).await.unwrap();
+        let data: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        let key = &data["keys"][0];
+        assert_eq!(key["kid"], "example-2026");
+        assert_eq!(key["use"], "sig");
+        assert_eq!(key["alg"], "RS256");
+        assert!(key["n"].as_str().unwrap().len() > 300);
+        assert_eq!(key["e"], "AQAB");
+        assert!(key.get("d").is_none());
+        assert!(!std::str::from_utf8(&json).unwrap().contains("PRIVATE KEY"));
+    }
 }
