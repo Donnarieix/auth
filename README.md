@@ -64,7 +64,33 @@ The server applies conservative in-process 60-second rate limits to registration
 
 **This is not production-ready.** Registration cannot yet confirm email ownership; login issues a development cookie without `Secure`. Session hardening, CSRF protection, password reset, robust anti-automation measures and OIDC remain in issues #10–#12.
 
-## Implementation tracking
+## Email verification and account recovery (prototype)
+
+Email verification and password reset use random 32-byte codes sent to the user's **current email**. SQLite stores only SHA-256 hashes of codes, not their plaintext. Verification codes expire after **24 hours**; recovery codes expire after **30 minutes**. Codes are single use and invalid after a change of email. Recovery changes the password hash and revokes every existing user session within one transaction. Security events are recorded without secrets.
+
+The initial account registration schedules a verification email if SMTP is configured. The following JSON POST endpoints are available:
+
+| Endpoint | JSON fields | Result |
+|---|---|---|
+| `/email/verification/request` | `email` | 202 (whether account exists or not) |
+| `/email/verification/confirm` | `token` | 204 on successful verification |
+| `/password/reset/request` | `email` | 202 (whether account exists or not) |
+| `/password/reset/confirm` | `token`, `new_password` | 204 on successful recovery |
+
+Invalid/expired/reused codes receive a generic 400. Requests are rate limited within the application process. Codes are included in the **message body of the delivered email only** and must be submitted by POST; no public UI or email links exist yet.
+
+To send real emails, configure the following variables in the **untracked local `.env`**, not in Git:
+
+```text
+SMTP_HOST=smtp.example.com
+SMTP_USERNAME=your-username
+SMTP_PASSWORD=your-app-specific-password
+MAIL_FROM=auth@example.com
+```
+
+SMTP uses an authenticated **TLS relay on port 465** (SMTPS). If `SMTP_HOST` is absent, delivery is disabled and no codes are exposed in logs, files or API responses. Requests still return their generic 202 response. Incorrect partial SMTP configuration prevents startup.
+
+**Not production-ready:** email delivery is currently best effort; a crash can interrupt pending sends. Configure SPF, DKIM and DMARC for the sender, add a durable delivery queue, production security headers, distributed abuse controls, account notifications and proper frontend flows before exposing the service. Secure cookies/CSRF are tracked by #11, OpenID Connect by #12.
 
 ## Implementation tracking
 
