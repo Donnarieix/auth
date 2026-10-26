@@ -117,6 +117,21 @@ const OIDC_CONSENT_SCHEMA: &[&str] = &[
     "CREATE INDEX oidc_consents_client_idx ON oidc_consents(client_id)",
 ];
 
+const ACCESS_TOKEN_SCHEMA: &[&str] = &[
+    r#"CREATE TABLE oidc_access_tokens (
+        id TEXT PRIMARY KEY NOT NULL,
+        token_hash BLOB NOT NULL UNIQUE,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        scope TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1))
+    )"#,
+    "CREATE INDEX oidc_access_tokens_user_idx ON oidc_access_tokens(user_id)",
+    "CREATE INDEX oidc_access_tokens_expiry_idx ON oidc_access_tokens(expires_at)",
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -131,7 +146,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 6 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 7 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -245,6 +260,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (6)",
+        ))
+        .await?;
+    }
+
+    let has_v7 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 7",
+        ))
+        .await?
+        .is_some();
+    if !has_v7 {
+        for sql in ACCESS_TOKEN_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (7)",
         ))
         .await?;
     }
