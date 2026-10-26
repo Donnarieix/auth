@@ -22,6 +22,8 @@ mod state;
 
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod recovery_tests;
 
 fn router(state: AppState) -> Router {
     let protected = Router::new()
