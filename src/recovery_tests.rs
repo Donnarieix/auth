@@ -262,16 +262,19 @@ async fn recovery_code_is_invalidated_after_email_change() {
     );
 }
 
-
 #[tokio::test]
 async fn resending_verification_invalidates_the_previous_code() {
     let (app, state, mut rx) = test_app().await;
     register(&app, "known@example.com").await;
     let initial = received(&mut rx).await;
     assert_eq!(
-        post(&app, "/email/verification/request", r#"{"email":"known@example.com"}"#)
-            .await
-            .status(),
+        post(
+            &app,
+            "/email/verification/request",
+            r#"{"email":"known@example.com"}"#
+        )
+        .await
+        .status(),
         StatusCode::ACCEPTED
     );
     let next = received(&mut rx).await;
@@ -279,15 +282,23 @@ async fn resending_verification_invalidates_the_previous_code() {
     let old_body = format!(r#"{{"token":"{initial}"}}"#);
     let new_body = format!(r#"{{"token":"{next}"}}"#);
     assert_eq!(
-        post(&app, "/email/verification/confirm", &old_body).await.status(),
+        post(&app, "/email/verification/confirm", &old_body)
+            .await
+            .status(),
         StatusCode::BAD_REQUEST
     );
     assert_eq!(
-        post(&app, "/email/verification/confirm", &new_body).await.status(),
+        post(&app, "/email/verification/confirm", &new_body)
+            .await
+            .status(),
         StatusCode::NO_CONTENT
     );
     assert_eq!(
-        account_token::Entity::find().all(&state.db).await.unwrap().len(),
+        account_token::Entity::find()
+            .all(&state.db)
+            .await
+            .unwrap()
+            .len(),
         1
     );
 }
