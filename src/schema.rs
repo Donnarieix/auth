@@ -130,6 +130,9 @@ const ACCESS_TOKEN_SCHEMA: &[&str] = &[
     )"#,
     "CREATE INDEX oidc_access_tokens_user_idx ON oidc_access_tokens(user_id)",
     "CREATE INDEX oidc_access_tokens_expiry_idx ON oidc_access_tokens(expires_at)",
+    r#"CREATE TRIGGER oidc_password_reset_revokes_access
+        AFTER UPDATE OF password_hash ON password_credentials
+        BEGIN UPDATE oidc_access_tokens SET revoked = 1 WHERE user_id = NEW.user_id; END"#,
 ];
 
 fn statement(sql: &str) -> Statement {

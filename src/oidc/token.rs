@@ -128,6 +128,9 @@ pub async fn token(
         _ => return invalid_grant().into_response(),
     };
 
+    if app.client_type != "desktop" {
+        return invalid_grant().into_response();
+    }
     let (access_token, hash) = generate_token();
     let now = Utc::now();
     let access = oidc_access_token::ActiveModel {
