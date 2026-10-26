@@ -7,9 +7,7 @@ use axum::{
     response::IntoResponse,
 };
 use chrono::{Duration, Utc};
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -45,11 +43,21 @@ struct OAuthError {
 }
 
 fn invalid_grant() -> (StatusCode, Json<OAuthError>) {
-    (StatusCode::BAD_REQUEST, Json(OAuthError { error: "invalid_grant" }))
+    (
+        StatusCode::BAD_REQUEST,
+        Json(OAuthError {
+            error: "invalid_grant",
+        }),
+    )
 }
 
 fn invalid_request() -> (StatusCode, Json<OAuthError>) {
-    (StatusCode::BAD_REQUEST, Json(OAuthError { error: "invalid_request" }))
+    (
+        StatusCode::BAD_REQUEST,
+        Json(OAuthError {
+            error: "invalid_request",
+        }),
+    )
 }
 
 /// For public clients only; no confidential client credentials are accepted.
@@ -70,14 +78,27 @@ pub async fn token(
     {
         return invalid_request().into_response();
     }
-    if !state.abuse.allow("oidc_token", &form.client_id, 80, 20).await {
-        return (StatusCode::TOO_MANY_REQUESTS, Json(OAuthError { error: "slow_down" })).into_response();
+    if !state
+        .abuse
+        .allow("oidc_token", &form.client_id, 80, 20)
+        .await
+    {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(OAuthError { error: "slow_down" }),
+        )
+            .into_response();
     }
 
     let grant = match grants::redeem(
-        &state.db, &form.code, &form.client_id,
-        &form.redirect_uri, &form.code_verifier,
-    ).await {
+        &state.db,
+        &form.code,
+        &form.client_id,
+        &form.redirect_uri,
+        &form.code_verifier,
+    )
+    .await
+    {
         Ok(grant) => grant,
         Err(_) => return invalid_grant().into_response(),
     };
@@ -87,12 +108,21 @@ pub async fn token(
     };
     let id_token = match keys.sign_id_token(&grant, &account, grant.auth_time) {
         Ok(jwt) => jwt,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(OAuthError { error: "server_error" })).into_response(),
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(OAuthError {
+                    error: "server_error",
+                }),
+            )
+                .into_response();
+        }
     };
     let app = match client::Entity::find()
         .filter(client::COLUMN.client_id.eq(&grant.client_id))
         .filter(client::COLUMN.active.eq(true))
-        .one(&state.db).await
+        .one(&state.db)
+        .await
     {
         Ok(Some(app)) => app,
         _ => return invalid_grant().into_response(),
@@ -111,11 +141,20 @@ pub async fn token(
         revoked: Set(false),
     };
     if access.insert(&state.db).await.is_err() {
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(OAuthError { error: "server_error" })).into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(OAuthError {
+                error: "server_error",
+            }),
+        )
+            .into_response();
     }
     (
         StatusCode::OK,
-        [(header::CACHE_CONTROL, "no-store"), (header::PRAGMA, "no-cache")],
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (header::PRAGMA, "no-cache"),
+        ],
         Json(TokenResponse {
             access_token,
             token_type: "Bearer",
@@ -123,7 +162,8 @@ pub async fn token(
             id_token,
             scope: grant.scope,
         }),
-    ).into_response()
+    )
+        .into_response()
 }
 
 #[derive(Serialize)]
@@ -141,10 +181,7 @@ pub struct UserInfo {
     email_verified: Option<bool>,
 }
 
-pub async fn userinfo(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
+pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
     let bearer = headers
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
@@ -156,24 +193,28 @@ pub async fn userinfo(
     let access = oidc_access_token::Entity::find()
         .filter(oidc_access_token::COLUMN.token_hash.eq(hash))
         .filter(oidc_access_token::COLUMN.revoked.eq(false))
-        .one(&state.db).await
+        .one(&state.db)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::UNAUTHORIZED)?;
     if access.expires_at <= Utc::now() {
         return Err(StatusCode::UNAUTHORIZED);
     }
     let account = user::Entity::find_by_id(access.user_id)
-        .one(&state.db).await
+        .one(&state.db)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .filter(|account| account.active && account.email_verified)
         .ok_or(StatusCode::UNAUTHORIZED)?;
     let app = client::Entity::find_by_id(access.client_id)
-        .one(&state.db).await
+        .one(&state.db)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .filter(|client| client.active)
         .ok_or(StatusCode::UNAUTHORIZED)?;
     if !consent::approved(&state.db, account.id, app.id, &access.scope)
-        .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     {
         return Err(StatusCode::UNAUTHORIZED);
     }
@@ -183,8 +224,16 @@ pub async fn userinfo(
         Json(UserInfo {
             sub: account.id.to_string(),
             preferred_username: scopes.profile.then(|| account.username.clone()),
-            name: if scopes.profile { account.display_name } else { None },
-            picture: if scopes.profile { account.avatar_url } else { None },
+            name: if scopes.profile {
+                account.display_name
+            } else {
+                None
+            },
+            picture: if scopes.profile {
+                account.avatar_url
+            } else {
+                None
+            },
             email: scopes.email.then(|| account.email),
             email_verified: scopes.email.then_some(account.email_verified),
         }),
@@ -192,5 +241,8 @@ pub async fn userinfo(
 }
 
 /// The current Authorization Code profile only permits PKCE public clients.
-#[expect(dead_code, reason = "Signer exposed only when OIDC endpoints are enabled")]
+#[expect(
+    dead_code,
+    reason = "Signer exposed only when OIDC endpoints are enabled"
+)]
 fn _requires_signer(_: &SigningKeys) {}

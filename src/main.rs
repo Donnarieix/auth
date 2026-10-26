@@ -8,9 +8,9 @@ use tokio::net::TcpListener;
 
 use crate::{
     middleware::auth,
-    oidc::signing::jwks,
-    oidc::authorization::{authorization_page, approve, deny},
+    oidc::authorization::{approve, authorization_page, deny},
     oidc::discovery::discovery,
+    oidc::signing::jwks,
     oidc::token::{token, userinfo},
     routes::account::{confirm_reset, confirm_verification, request_reset, request_verification},
     routes::{health::health, login::login, logout::logout, me::me, register::register},

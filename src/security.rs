@@ -96,10 +96,12 @@ pub async fn require_same_origin(
     // /token is a back-channel OAuth call authenticated by a one-time PKCE
     // verifier, not by browser cookies. It must not require an Origin header.
     let oauth_backchannel = request.method() == Method::POST && request.uri().path() == "/token";
-    if !oauth_backchannel && matches!(
-        *request.method(),
-        Method::POST | Method::PUT | Method::PATCH | Method::DELETE
-    ) {
+    if !oauth_backchannel
+        && matches!(
+            *request.method(),
+            Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+        )
+    {
         let origin = request
             .headers()
             .get(header::ORIGIN)
