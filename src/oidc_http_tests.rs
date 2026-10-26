@@ -108,10 +108,15 @@ async fn consent_code_token_and_userinfo_flow() {
     let client = get_client(&state.db, &client_id).await.unwrap().unwrap();
     password_credential::ActiveModel {
         user_id: Set(id),
-        password_hash: Set(password::hash(&state, "Strong test password 2026!".into()).await.unwrap()),
+        password_hash: Set(password::hash(&state, "Strong test password 2026!".into())
+            .await
+            .unwrap()),
         created_at: Set(now),
         updated_at: Set(now),
-    }.insert(&state.db).await.unwrap();
+    }
+    .insert(&state.db)
+    .await
+    .unwrap();
     let app = router(state.clone());
     let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
     let params = [
@@ -125,15 +130,41 @@ async fn consent_code_token_and_userinfo_flow() {
         ("code_challenge_method", "S256"),
     ];
     let base = form(&params);
-    let sign_in = send(&app, Method::GET, &format!("/authorize?{base}"), String::new(), None, false).await;
+    let sign_in = send(
+        &app,
+        Method::GET,
+        &format!("/authorize?{base}"),
+        String::new(),
+        None,
+        false,
+    )
+    .await;
     assert_eq!(sign_in.status(), StatusCode::OK);
-    let sign_in_html = String::from_utf8(to_bytes(sign_in.into_body(), 65536).await.unwrap().to_vec()).unwrap();
+    let sign_in_html =
+        String::from_utf8(to_bytes(sign_in.into_body(), 65536).await.unwrap().to_vec()).unwrap();
     assert!(sign_in_html.contains("Sign in to Donnarieix"));
-    let login_form = format!("{base}&email=known%40example.com&password=Strong+test+password+2026%21");
-    let logged_in = send(&app, Method::POST, "/authorize/login", login_form, None, true).await;
+    let login_form =
+        format!("{base}&email=known%40example.com&password=Strong+test+password+2026%21");
+    let logged_in = send(
+        &app,
+        Method::POST,
+        "/authorize/login",
+        login_form,
+        None,
+        true,
+    )
+    .await;
     assert_eq!(logged_in.status(), StatusCode::SEE_OTHER);
-    let browser_cookie = logged_in.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap()
-        .split(';').next().unwrap().to_owned();
+    let browser_cookie = logged_in
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
     assert!(browser_cookie.starts_with("__Host-auth_session="));
     let metadata = json(
         send(
