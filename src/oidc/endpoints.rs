@@ -279,5 +279,6 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> Resp
             email: scopes.email.then(|| account.email),
             email_verified: scopes.email.then_some(account.email_verified),
         }),
-    ).into_response()
+    )
+        .into_response()
 }
