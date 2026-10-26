@@ -2,6 +2,7 @@
 //! No authorization endpoint is exposed until issuing codes and signing tokens
 //! are fully implemented and tested.
 pub mod consent;
+pub mod authorization;
 pub mod discovery;
 pub mod grants;
 pub mod signing;
