@@ -8,6 +8,7 @@ pub struct Model {
     pub id: Uuid,
     #[sea_orm(unique)]
     pub client_id: String,
+    pub client_type: String,
     pub name: String,
     pub created_at: DateTimeUtc,
     pub active: bool,

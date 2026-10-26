@@ -80,6 +80,11 @@ const SESSION_SECURITY_SCHEMA: &[&str] = &[
     "UPDATE sessions SET active = 0 WHERE user_id IN (SELECT id FROM users WHERE active = 0)",
 ];
 
+const CLIENT_REGISTRY_SCHEMA: &[&str] = &[
+    r#"ALTER TABLE clients ADD COLUMN client_type TEXT NOT NULL DEFAULT 'web'
+       CHECK (client_type IN ('web', 'desktop'))"#,
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -94,7 +99,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 3 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 4 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -160,6 +165,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (3)",
+        ))
+        .await?;
+    }
+
+    let has_v4 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 4",
+        ))
+        .await?
+        .is_some();
+    if !has_v4 {
+        for sql in CLIENT_REGISTRY_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (4)",
         ))
         .await?;
     }
@@ -258,6 +279,54 @@ mod tests {
         assert!(
             db.query_one_raw(super::statement(
                 "SELECT version FROM schema_migrations WHERE version = 2",
+            ))
+            .await
+            .unwrap()
+            .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn existing_client_registry_upgrades_to_version_four() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        db.execute_raw(super::statement(
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY NOT NULL)",
+        ))
+        .await
+        .unwrap();
+
+        for sql in super::INITIAL_SCHEMA
+            .iter()
+            .chain(super::RECOVERY_SCHEMA)
+            .chain(super::SESSION_SECURITY_SCHEMA)
+        {
+            db.execute_raw(super::statement(sql)).await.unwrap();
+        }
+        db.execute_raw(super::statement(
+            "INSERT INTO schema_migrations (version) VALUES (1), (2), (3)",
+        ))
+        .await
+        .unwrap();
+        db.execute_raw(super::statement(
+            "INSERT INTO clients(id,client_id,name,created_at,active) VALUES ('00000000-0000-4000-8000-000000000001', 'legacy-client', 'Legacy', '2026-01-01T00:00:00Z', 1)",
+        ))
+        .await
+        .unwrap();
+
+        apply(&db).await.unwrap();
+        apply(&db).await.unwrap();
+        let found = db
+            .query_one_raw(super::statement(
+                "SELECT client_type FROM clients WHERE client_id = 'legacy-client'",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let kind: String = found.try_get("", "client_type").unwrap();
+        assert_eq!(kind, "web");
+        assert!(
+            db.query_one_raw(super::statement(
+                "SELECT version FROM schema_migrations WHERE version = 4",
             ))
             .await
             .unwrap()
