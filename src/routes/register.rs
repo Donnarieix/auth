@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     entities,
-    services::{identity::validate_registration, password},
+    services::{account::{self, Purpose}, identity::validate_registration, password},
     state::AppState,
 };
 
@@ -31,6 +31,7 @@ pub async fn register(
 
     // Hash even for duplicates to avoid a cheap existence check.
     let password_hash = password::hash(&state, payload.password).await?;
+    let email_for_verification = input.email.clone();
     let now = chrono::Utc::now();
     let user_id = Uuid::new_v4();
     let tx = state
@@ -76,7 +77,12 @@ pub async fn register(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    // Verification email is not yet implemented (#10); accepted does not
-    // confirm whether the identifier was already registered.
+    // Email delivery is detached; the API never reveals whether SMTP succeeded.
+    // If SMTP is unconfigured, verification can be requested after setup.
+    if state.mailer.enabled() {
+        tokio::spawn(async move {
+            let _ = account::issue(&state, &email_for_verification, Purpose::VerifyEmail).await;
+        });
+    }
     Ok(StatusCode::ACCEPTED)
 }
