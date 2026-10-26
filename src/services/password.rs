@@ -41,9 +41,11 @@ pub async fn verify(
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     task::spawn_blocking(move || {
         let _permit = permit;
-        PasswordHash::new(&stored_hash)
-            .ok()
-            .is_some_and(|parsed| Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok())
+        PasswordHash::new(&stored_hash).ok().is_some_and(|parsed| {
+            Argon2::default()
+                .verify_password(password.as_bytes(), &parsed)
+                .is_ok()
+        })
     })
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
@@ -64,8 +66,20 @@ mod tests {
         assert_ne!(a, b);
         assert!(a.starts_with("$argon2id$"));
         assert!(!a.contains("same secure password"));
-        assert!(verify(&state, "same secure password".into(), a.clone()).await.unwrap());
-        assert!(!verify(&state, "different password".into(), a).await.unwrap());
-        assert!(!verify(&state, "random password".into(), DUMMY_HASH.into()).await.unwrap());
+        assert!(
+            verify(&state, "same secure password".into(), a.clone())
+                .await
+                .unwrap()
+        );
+        assert!(
+            !verify(&state, "different password".into(), a)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !verify(&state, "random password".into(), DUMMY_HASH.into())
+                .await
+                .unwrap()
+        );
     }
 }

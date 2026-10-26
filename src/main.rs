@@ -1,5 +1,7 @@
 use axum::{
-    Router, extract::DefaultBodyLimit, middleware as axum_middleware,
+    Router,
+    extract::DefaultBodyLimit,
+    middleware as axum_middleware,
     routing::{get, post},
 };
 use tokio::net::TcpListener;

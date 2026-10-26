@@ -25,11 +25,7 @@ pub async fn register(
 
     // Global budget blocks attackers from evading throttling by varying email.
     // An email-specific budget bounds repeated attempts at a single account.
-    if !state
-        .abuse
-        .allow("register", &input.email, 40, 12)
-        .await
-    {
+    if !state.abuse.allow("register", &input.email, 40, 12).await {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 

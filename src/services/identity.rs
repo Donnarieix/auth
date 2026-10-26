@@ -36,7 +36,9 @@ pub fn normalize_email(input: &str) -> Option<String> {
                 || label.len() > 63
                 || label.starts_with('-')
                 || label.ends_with('-')
-                || !label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                || !label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
         })
         || labels.last().is_none_or(|tld| tld.len() < 2)
     {
@@ -77,17 +79,39 @@ mod tests {
 
     #[test]
     fn valid_identifiers_are_normalized_without_modifying_passwords() {
-        let input = validate_registration("  User+tag@Example.COM ", " Test_user ", "  twelve letters long ").unwrap();
+        let input = validate_registration(
+            "  User+tag@Example.COM ",
+            " Test_user ",
+            "  twelve letters long ",
+        )
+        .unwrap();
         assert_eq!(input.email, "user+tag@example.com");
         assert_eq!(input.username, "Test_user");
     }
 
     #[test]
     fn reject_ambiguous_or_unsafe_identifiers() {
-        for value in ["a@b", "a@@example.com", "a b@example.com", "a..b@example.com", ".a@example.com", "a@example..com", "a@example.com.", "a@-host.com", "a@host-.com", "a@exämple.com"] {
+        for value in [
+            "a@b",
+            "a@@example.com",
+            "a b@example.com",
+            "a..b@example.com",
+            ".a@example.com",
+            "a@example..com",
+            "a@example.com.",
+            "a@-host.com",
+            "a@host-.com",
+            "a@exämple.com",
+        ] {
             assert_eq!(normalize_email(value), None, "{value}");
         }
-        assert!(matches!(validate_registration("user@example.com", "../oops", "long password for me"), Err(ValidationError::Username)));
-        assert!(matches!(validate_registration("user@example.com", "valid", "short"), Err(ValidationError::Password)));
+        assert!(matches!(
+            validate_registration("user@example.com", "../oops", "long password for me"),
+            Err(ValidationError::Username)
+        ));
+        assert!(matches!(
+            validate_registration("user@example.com", "valid", "short"),
+            Err(ValidationError::Password)
+        ));
     }
 }

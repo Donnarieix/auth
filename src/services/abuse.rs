@@ -26,7 +26,10 @@ fn key(scope: &str, identity: &str) -> [u8; 32] {
 }
 
 fn count(buckets: &mut HashMap<[u8; 32], Bucket>, name: [u8; 32], now: Instant) -> u32 {
-    let entry = buckets.entry(name).or_insert(Bucket { start: now, count: 0 });
+    let entry = buckets.entry(name).or_insert(Bucket {
+        start: now,
+        count: 0,
+    });
     if now.duration_since(entry.start) >= WINDOW {
         entry.start = now;
         entry.count = 0;
