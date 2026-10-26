@@ -34,7 +34,11 @@ impl ClientType {
 }
 
 pub fn validate_redirect_uri(kind: ClientType, raw: &str) -> Result<(), &'static str> {
-    if raw.is_empty() || raw.len() > 2048 || raw.trim() != raw {
+    if raw.is_empty()
+        || raw.len() > 2048
+        || raw.trim() != raw
+        || raw.bytes().any(|b| b.is_ascii_control())
+    {
         return Err("Invalid redirect URI length or whitespace");
     }
     let url = Url::parse(raw).map_err(|_| "Malformed redirect URI")?;

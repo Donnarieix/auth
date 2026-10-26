@@ -174,7 +174,8 @@ mod tests {
             Err(AuthorizationError::InvalidPkce)
         );
         request.code_challenge_method = "S256".into();
-        request.code_challenge = "0".repeat(43);
+        // Reject malformed PKCE rather than trying to guess client entropy.
+        request.code_challenge = "0".repeat(42);
         assert_eq!(
             validate_authorization_request(&db, &request).await,
             Err(AuthorizationError::InvalidPkce)
