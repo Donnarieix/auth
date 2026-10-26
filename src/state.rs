@@ -4,6 +4,7 @@ use sea_orm::{Database, DatabaseConnection};
 use tokio::sync::Semaphore;
 
 use crate::{
+    oidc::signing::SigningKeys,
     schema,
     security::SecurityConfig,
     services::{abuse::AbuseGuard, email::Mailer},
@@ -16,6 +17,7 @@ pub struct AppState {
     pub hash_slots: Arc<Semaphore>,
     pub mailer: Mailer,
     pub security: SecurityConfig,
+    pub oidc_keys: Option<Arc<SigningKeys>>,
 }
 
 impl AppState {
@@ -31,6 +33,7 @@ impl AppState {
             hash_slots: Arc::new(Semaphore::new(4)),
             mailer,
             security: SecurityConfig::development(),
+            oidc_keys: None,
         }
     }
 
@@ -47,6 +50,9 @@ impl AppState {
 
         let security = SecurityConfig::from_env().expect("Invalid AUTH_PUBLIC_ORIGIN");
         let mut state = Self::with_mailer(db, Mailer::from_env());
+        state.oidc_keys = SigningKeys::from_env(&security.origin)
+            .expect("Invalid OIDC signing key configuration")
+            .map(Arc::new);
         state.security = security;
         state
     }

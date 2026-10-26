@@ -1,6 +1,6 @@
 //! Internal ID token RS256 signing with a public JWKS.
 //! Private RSA material is loaded only from a local, untracked file.
-use std::{collections::HashSet, fs, path::Path, sync::Arc};
+use std::{collections::HashSet, fs, path::Path};
 
 use axum::{Json, extract::State, http::{StatusCode, header}, response::IntoResponse};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -8,13 +8,13 @@ use chrono::{DateTime, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use rsa::{RsaPrivateKey, RsaPublicKey, pkcs8::{DecodePrivateKey, DecodePublicKey}, traits::PublicKeyParts};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{entities::user, oidc::{consent::Scopes, grants::RedeemedGrant}, state::AppState};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct PublicJwk {
     pub kty: &'static str,
+    #[serde(rename = "use")]
     pub use_: &'static str,
     pub alg: &'static str,
     pub kid: String,
@@ -121,11 +121,10 @@ impl SigningKeys {
     pub fn from_env(issuer: &str) -> Result<Option<Self>, String> {
         let key_file = std::env::var("OIDC_SIGNING_KEY_FILE").ok();
         let kid = std::env::var("OIDC_SIGNING_KID").ok();
-        let (Some(key_file), Some(kid)) = (key_file, kid) else {
-            if key_file.is_some() || kid.is_some() || std::env::var_os("OIDC_OLD_PUBLIC_KEYS_DIR").is_some() {
-                return Err("OIDC signing key and key ID must be configured together".into());
-            }
-            return Ok(None);
+        let (key_file, kid) = match (key_file, kid) {
+            (Some(file), Some(kid)) => (file, kid),
+            (None, None) if std::env::var_os("OIDC_OLD_PUBLIC_KEYS_DIR").is_none() => return Ok(None),
+            _ => return Err("OIDC signing key and key ID must be configured together".into()),
         };
         if !issuer.starts_with("https://") {
             return Err("OIDC signing requires an externally configured HTTPS origin".into());
@@ -214,6 +213,7 @@ pub async fn jwks(State(state): State<AppState>) -> Result<impl IntoResponse, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uuid::Uuid;
     use jsonwebtoken::{decode, decode_header, DecodingKey, Validation};
     use rand_core::OsRng;
     use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey, LineEnding};

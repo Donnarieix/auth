@@ -8,6 +8,7 @@ use tokio::net::TcpListener;
 
 use crate::{
     middleware::auth,
+    oidc::signing::jwks,
     routes::account::{confirm_reset, confirm_verification, request_reset, request_verification},
     routes::{health::health, login::login, logout::logout, me::me, register::register},
     security::require_same_origin,
@@ -41,7 +42,7 @@ fn router(state: AppState) -> Router {
         .route("/logout", post(logout))
         .route_layer(axum_middleware::from_fn_with_state(state.clone(), auth));
 
-    Router::new()
+    let mut app = Router::new()
         .route("/health", get(health))
         .route("/register", post(register))
         .route("/login", post(login))
@@ -54,8 +55,11 @@ fn router(state: AppState) -> Router {
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             require_same_origin,
-        ))
-        .with_state(state)
+        ));
+    if state.oidc_keys.is_some() {
+        app = app.route("/.well-known/jwks.json", get(jwks));
+    }
+    app.with_state(state)
 }
 
 #[tokio::main]
