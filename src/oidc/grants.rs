@@ -58,7 +58,11 @@ pub async fn issue(
     // deactivation of the client between validation and issuance.
     if client_redirect_uri::Entity::find()
         .filter(client_redirect_uri::COLUMN.client_id.eq(app.id))
-        .filter(client_redirect_uri::COLUMN.redirect_uri.eq(&request.redirect_uri))
+        .filter(
+            client_redirect_uri::COLUMN
+                .redirect_uri
+                .eq(&request.redirect_uri),
+        )
         .one(&tx)
         .await?
         .is_none()
@@ -195,7 +199,12 @@ mod tests {
 
     const VERIFIER: &str = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 
-    async fn fixture() -> (sea_orm::DatabaseConnection, AuthorizationRequest, Uuid, Uuid) {
+    async fn fixture() -> (
+        sea_orm::DatabaseConnection,
+        AuthorizationRequest,
+        Uuid,
+        Uuid,
+    ) {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         schema::apply(&db).await.unwrap();
         let redirect = "https://app.example.com/callback".to_string();
@@ -254,12 +263,18 @@ mod tests {
         let (db, req, uid, sid) = fixture().await;
         let code = issue(&db, &req, uid, sid).await.unwrap();
         assert_eq!(code.len(), 43);
-        let stored = authorization_code::Entity::find().one(&db).await.unwrap().unwrap();
+        let stored = authorization_code::Entity::find()
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(stored.code_hash, Sha256::digest(code.as_bytes()).to_vec());
         assert_ne!(stored.code_hash, code.as_bytes());
         assert!(stored.expires_at <= Utc::now() + chrono::Duration::minutes(5));
 
-        let result = redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER).await.unwrap();
+        let result = redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER)
+            .await
+            .unwrap();
         assert_eq!(result.user_id, uid);
         assert_eq!(result.client_id, req.client_id);
         assert_eq!(result.scope, "openid profile");
@@ -275,18 +290,43 @@ mod tests {
         let (db, req, uid, sid) = fixture().await;
         let code = issue(&db, &req, uid, sid).await.unwrap();
         assert!(matches!(
-            redeem(&db, &code, &req.client_id, &req.redirect_uri, "x".repeat(43).as_str()).await,
+            redeem(
+                &db,
+                &code,
+                &req.client_id,
+                &req.redirect_uri,
+                "x".repeat(43).as_str()
+            )
+            .await,
             Err(GrantError::InvalidGrant)
         ));
         assert!(matches!(
-            redeem(&db, &code, &Uuid::new_v4().to_string(), &req.redirect_uri, VERIFIER).await,
+            redeem(
+                &db,
+                &code,
+                &Uuid::new_v4().to_string(),
+                &req.redirect_uri,
+                VERIFIER
+            )
+            .await,
             Err(GrantError::InvalidGrant)
         ));
         assert!(matches!(
-            redeem(&db, &code, &req.client_id, "https://evil.example/callback", VERIFIER).await,
+            redeem(
+                &db,
+                &code,
+                &req.client_id,
+                "https://evil.example/callback",
+                VERIFIER
+            )
+            .await,
             Err(GrantError::InvalidGrant)
         ));
-        assert!(redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER).await.is_ok());
+        assert!(
+            redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER)
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -298,7 +338,9 @@ mod tests {
                 authorization_code::COLUMN.expires_at,
                 Expr::value(Utc::now() - chrono::Duration::seconds(1)),
             )
-            .exec(&db).await.unwrap();
+            .exec(&db)
+            .await
+            .unwrap();
         assert!(matches!(
             redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER).await,
             Err(GrantError::InvalidGrant)
@@ -318,21 +360,33 @@ mod tests {
         user::Entity::update_many()
             .col_expr(user::COLUMN.email_verified, Expr::value(false))
             .filter(user::COLUMN.id.eq(uid))
-            .exec(&db).await.unwrap();
-        assert!(matches!(issue(&db, &req, uid, sid).await, Err(GrantError::InvalidRequest)));
+            .exec(&db)
+            .await
+            .unwrap();
+        assert!(matches!(
+            issue(&db, &req, uid, sid).await,
+            Err(GrantError::InvalidRequest)
+        ));
         user::Entity::update_many()
             .col_expr(user::COLUMN.email_verified, Expr::value(true))
             .filter(user::COLUMN.id.eq(uid))
-            .exec(&db).await.unwrap();
+            .exec(&db)
+            .await
+            .unwrap();
         let code = issue(&db, &req, uid, sid).await.unwrap();
         session::Entity::update_many()
             .col_expr(session::COLUMN.active, Expr::value(false))
             .filter(session::COLUMN.id.eq(sid))
-            .exec(&db).await.unwrap();
+            .exec(&db)
+            .await
+            .unwrap();
         assert!(matches!(
             redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER).await,
             Err(GrantError::InvalidGrant)
         ));
-        assert!(matches!(issue(&db, &req, uid, sid).await, Err(GrantError::InvalidRequest)));
+        assert!(matches!(
+            issue(&db, &req, uid, sid).await,
+            Err(GrantError::InvalidRequest)
+        ));
     }
 }
