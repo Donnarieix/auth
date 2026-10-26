@@ -14,7 +14,10 @@ use uuid::Uuid;
 
 use crate::{
     entities::{client, oidc_access_token, session, user},
-    oidc::{consent::{self, Scopes}, grants},
+    oidc::{
+        consent::{self, Scopes},
+        grants,
+    },
     services::{client::get_client, session::generate_token},
     state::AppState,
 };

@@ -296,19 +296,33 @@ async fn consent_code_token_and_userinfo_flow() {
 
     // Revocation cuts off a previously issued bearer token immediately.
     assert!(consent::revoke(&state.db, id, client.id).await.unwrap());
-    let revoked = app.clone().oneshot(
-        Request::builder().uri("/userinfo")
-            .header(header::AUTHORIZATION, &bearer)
-            .body(Body::empty()).unwrap()
-    ).await.unwrap();
+    let revoked = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/userinfo")
+                .header(header::AUTHORIZATION, &bearer)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(revoked.status(), StatusCode::UNAUTHORIZED);
     // Re-approval must not resurrect the old token.
-    consent::approve(&state.db, id, client.id, "openid email").await.unwrap();
-    let resurrected = app.clone().oneshot(
-        Request::builder().uri("/userinfo")
-            .header(header::AUTHORIZATION, &bearer)
-            .body(Body::empty()).unwrap()
-    ).await.unwrap();
+    consent::approve(&state.db, id, client.id, "openid email")
+        .await
+        .unwrap();
+    let resurrected = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/userinfo")
+                .header(header::AUTHORIZATION, &bearer)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resurrected.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(
         send(&app, Method::POST, "/token", grant, None, false)
