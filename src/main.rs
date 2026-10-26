@@ -60,7 +60,10 @@ fn router(state: AppState) -> Router {
     if state.oidc_keys.is_some() {
         app = app
             .route("/.well-known/jwks.json", get(jwks))
-            .route("/.well-known/openid-configuration", get(endpoints::discovery))
+            .route(
+                "/.well-known/openid-configuration",
+                get(endpoints::discovery),
+            )
             .route("/authorize", get(browser::authorize))
             .route("/authorize/login", post(browser::login))
             .route("/authorize/consent", post(browser::consent))

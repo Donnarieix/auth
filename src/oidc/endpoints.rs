@@ -50,7 +50,15 @@ pub async fn discovery(State(state): State<AppState>) -> impl IntoResponse {
             subject_types_supported: vec!["public"],
             id_token_signing_alg_values_supported: vec!["RS256"],
             scopes_supported: vec!["openid", "profile", "email"],
-            claims_supported: vec!["sub", "preferred_username", "name", "picture", "email", "email_verified", "auth_time"],
+            claims_supported: vec![
+                "sub",
+                "preferred_username",
+                "name",
+                "picture",
+                "email",
+                "email_verified",
+                "auth_time",
+            ],
             grant_types_supported: vec!["authorization_code"],
             token_endpoint_auth_methods_supported: vec!["none"],
             code_challenge_methods_supported: vec!["S256"],
@@ -85,15 +93,16 @@ struct OAuthError {
 fn error(status: StatusCode, kind: &'static str) -> Response {
     (
         status,
-        [(header::CACHE_CONTROL, "no-store"), (header::PRAGMA, "no-cache")],
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (header::PRAGMA, "no-cache"),
+        ],
         Json(OAuthError { error: kind }),
-    ).into_response()
+    )
+        .into_response()
 }
 
-pub async fn token(
-    State(state): State<AppState>,
-    Form(form): Form<Exchange>,
-) -> Response {
+pub async fn token(State(state): State<AppState>, Form(form): Form<Exchange>) -> Response {
     let Some(keys) = state.oidc_keys.as_ref() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "temporarily_unavailable");
     };
@@ -106,7 +115,11 @@ pub async fn token(
     {
         return error(StatusCode::BAD_REQUEST, "invalid_request");
     }
-    if !state.abuse.allow("oidc_token", &form.client_id, 160, 40).await {
+    if !state
+        .abuse
+        .allow("oidc_token", &form.client_id, 160, 40)
+        .await
+    {
         return error(StatusCode::TOO_MANY_REQUESTS, "slow_down");
     }
 
@@ -116,7 +129,9 @@ pub async fn token(
         &form.client_id,
         &form.redirect_uri,
         &form.code_verifier,
-    ).await {
+    )
+    .await
+    {
         Ok(grant) => grant,
         Err(grants::GrantError::Database) => {
             return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
@@ -153,7 +168,10 @@ pub async fn token(
         return error(StatusCode::INTERNAL_SERVER_ERROR, "server_error");
     }
     (
-        [(header::CACHE_CONTROL, "no-store"), (header::PRAGMA, "no-cache")],
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (header::PRAGMA, "no-cache"),
+        ],
         Json(TokenResult {
             access_token,
             token_type: "Bearer",
@@ -161,7 +179,8 @@ pub async fn token(
             scope: grant.scope,
             id_token: jwt,
         }),
-    ).into_response()
+    )
+        .into_response()
 }
 
 #[derive(Serialize)]
@@ -184,11 +203,15 @@ fn unauthorized() -> Response {
         StatusCode::UNAUTHORIZED,
         [(header::WWW_AUTHENTICATE, "Bearer error=\"invalid_token\""),
          (header::CACHE_CONTROL, "no-store")],
-    ).into_response()
+    )
+        .into_response()
 }
 
 pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let Some(value) = headers.get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) else {
+    let Some(value) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    else {
         return unauthorized();
     };
     let Some(bearer) = value.strip_prefix("Bearer ") else {
@@ -204,19 +227,30 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> Resp
     let hash = Sha256::digest(bearer.as_bytes()).to_vec();
     let record = match oidc_access_token::Entity::find()
         .filter(oidc_access_token::COLUMN.token_hash.eq(hash))
-        .one(&state.db).await {
+        .one(&state.db)
+        .await
+    {
         Ok(Some(token)) if token.expires_at > Utc::now() => token,
         _ => return unauthorized(),
     };
-    let account = match user::Entity::find_by_id(record.user_id).one(&state.db).await {
+    let account = match user::Entity::find_by_id(record.user_id)
+        .one(&state.db)
+        .await
+    {
         Ok(Some(account)) if account.active && account.email_verified => account,
         _ => return unauthorized(),
     };
-    let browser = match session::Entity::find_by_id(record.session_id).one(&state.db).await {
+    let browser = match session::Entity::find_by_id(record.session_id)
+        .one(&state.db)
+        .await
+    {
         Ok(Some(s)) if s.active && s.user_id == record.user_id && s.expires_at > Utc::now() => s,
         _ => return unauthorized(),
     };
-    let app = match client::Entity::find_by_id(record.client_id).one(&state.db).await {
+    let app = match client::Entity::find_by_id(record.client_id)
+        .one(&state.db)
+        .await
+    {
         Ok(Some(c)) if c.active => c,
         _ => return unauthorized(),
     };
@@ -230,8 +264,16 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> Resp
         Json(Profile {
             sub: account.id.to_string(),
             preferred_username: scopes.profile.then(|| account.username),
-            name: if scopes.profile { account.display_name } else { None },
-            picture: if scopes.profile { account.avatar_url } else { None },
+            name: if scopes.profile {
+                account.display_name
+            } else {
+                None
+            },
+            picture: if scopes.profile {
+                account.avatar_url
+            } else {
+                None
+            },
             email: scopes.email.then(|| account.email),
             email_verified: scopes.email.then_some(account.email_verified),
         }),

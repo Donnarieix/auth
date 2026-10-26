@@ -263,14 +263,20 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         .await?;
     }
 
-    let has_v7 = tx.query_one_raw(statement(
-        "SELECT version FROM schema_migrations WHERE version = 7"
-    )).await?.is_some();
+    let has_v7 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 7",
+        ))
+        .await?
+        .is_some();
     if !has_v7 {
         for sql in OIDC_ACCESS_TOKEN_SCHEMA {
             tx.execute_raw(statement(sql)).await?;
         }
-        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (7)")).await?;
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (7)",
+        ))
+        .await?;
     }
     tx.commit().await
 }

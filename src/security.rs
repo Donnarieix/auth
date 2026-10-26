@@ -98,7 +98,9 @@ pub async fn require_same_origin(
         // the one-use grant + PKCE, not by browser cookies. Never accept a
         // cross-site browser form as an alternative to a backchannel request.
         if request.headers().contains_key(header::ORIGIN)
-            || request.headers().get("sec-fetch-site")
+            || request
+                .headers()
+                .get("sec-fetch-site")
                 .and_then(|v| v.to_str().ok())
                 .is_some_and(|site| site != "none")
         {

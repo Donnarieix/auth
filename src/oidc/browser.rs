@@ -42,8 +42,11 @@ pub struct ConsentAction {
 }
 
 fn escape(value: &str) -> String {
-    value.replace('&', "&amp;").replace('<', "&lt;")
-        .replace('>', "&gt;").replace('"', "&quot;")
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
         .replace('\'', "&#39;")
 }
 
@@ -56,11 +59,21 @@ fn hidden(request: &AuthorizationRequest) -> String {
         ("state", request.state.as_str()),
         ("nonce", request.nonce.as_str()),
         ("code_challenge", request.code_challenge.as_str()),
-        ("code_challenge_method", request.code_challenge_method.as_str()),
+        (
+            "code_challenge_method",
+            request.code_challenge_method.as_str(),
+        ),
     ];
-    values.iter().map(|(name, value)| {
-        format!("<input type=\"hidden\" name=\"{}\" value=\"{}\">", name, escape(value))
-    }).collect::<String>()
+    values
+        .iter()
+        .map(|(name, value)| {
+            format!(
+                "<input type=\"hidden\" name=\"{}\" value=\"{}\">",
+                name,
+                escape(value)
+            )
+        })
+        .collect::<String>()
 }
 
 fn query(request: &AuthorizationRequest) -> String {
@@ -77,7 +90,8 @@ fn query(request: &AuthorizationRequest) -> String {
 }
 
 fn document(body: &str) -> Response {
-    let html = format!(r#"<!doctype html><html lang="en"><head><meta charset="utf-8">
+    let html = format!(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="referrer" content="no-referrer"><title>Donnarieix Auth</title>
 <style>
@@ -88,7 +102,8 @@ h1 {{font-size:24px}}p {{line-height:1.6;color:#c8d5e5}}
 label {{display:block;margin-top:15px}}input:not([type=hidden]) {{display:block;box-sizing:border-box;width:100%;padding:10px;border-radius:7px;margin-top:5px}}
 button {{background:#a7ceff;border:0;border-radius:9px;padding:12px 16px;color:#102037;font-weight:bold;cursor:pointer;margin-top:20px}}
 .secondary {{background:#63768b;color:white;margin-left:8px}}
-</style></head><body><main>{body}</main></body></html>"#);
+</style></head><body><main>{body}</main></body></html>"#
+    );
     (
         [(header::CACHE_CONTROL, "no-store"),
          (header::REFERRER_POLICY, "no-referrer"),
@@ -100,17 +115,33 @@ button {{background:#a7ceff;border:0;border-radius:9px;padding:12px 16px;color:#
 }
 
 fn bad_request() -> Response {
-    (StatusCode::BAD_REQUEST, document("<h1>Invalid authorization request</h1><p>The client parameters were rejected.</p>")).into_response()
+    (
+        StatusCode::BAD_REQUEST,
+        document(
+            "<h1>Invalid authorization request</h1><p>The client parameters were rejected.</p>",
+        ),
+    )
+        .into_response()
 }
 
 async fn browser(state: &AppState, jar: &CookieJar) -> Option<(user::Model, session::Model)> {
     let raw = jar.get(state.security.cookie_name())?.value();
-    if raw.len() != 43 { return None; }
+    if raw.len() != 43 {
+        return None;
+    }
     let hashed = Sha256::digest(raw.as_bytes()).to_vec();
     let session = get_session(state, hashed).await.ok()??;
-    if !session.active || session.expires_at <= Utc::now() { return None; }
-    let account = session.find_related(user::Entity).one(&state.db).await.ok()??;
-    if !account.active || !account.email_verified { return None; }
+    if !session.active || session.expires_at <= Utc::now() {
+        return None;
+    }
+    let account = session
+        .find_related(user::Entity)
+        .one(&state.db)
+        .await
+        .ok()??;
+    if !account.active || !account.email_verified {
+        return None;
+    }
     Some((account, session))
 }
 
@@ -119,7 +150,10 @@ pub async fn authorize(
     jar: CookieJar,
     Query(request): Query<AuthorizationRequest>,
 ) -> Response {
-    if validate_authorization_request(&state.db, &request).await.is_err() {
+    if validate_authorization_request(&state.db, &request)
+        .await
+        .is_err()
+    {
         return bad_request();
     }
     let Some((account, _session)) = browser(&state, &jar).await else {
@@ -133,7 +167,11 @@ pub async fn authorize(
         );
         return document(&body);
     };
-    let Some(app) = get_client(&state.db, &request.client_id).await.ok().flatten() else {
+    let Some(app) = get_client(&state.db, &request.client_id)
+        .await
+        .ok()
+        .flatten()
+    else {
         return bad_request();
     };
     let body = format!(
@@ -152,15 +190,28 @@ pub async fn login(
     jar: CookieJar,
     Form(action): Form<LoginAction>,
 ) -> Response {
-    if validate_authorization_request(&state.db, &action.request).await.is_err() {
+    if validate_authorization_request(&state.db, &action.request)
+        .await
+        .is_err()
+    {
         return bad_request();
     }
     let Some(email) = crate::services::identity::normalize_email(&action.email) else {
-        return (StatusCode::UNAUTHORIZED, document("<h1>Unable to sign in</h1><p>Invalid credentials or unverified account.</p>")).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            document("<h1>Unable to sign in</h1><p>Invalid credentials or unverified account.</p>"),
+        )
+            .into_response();
     };
-    if action.password.len() > 512 || action.password.is_empty()
-        || !state.abuse.allow("oidc_login", &email, 80, 10).await {
-        return (StatusCode::UNAUTHORIZED, document("<h1>Unable to sign in</h1><p>Invalid credentials or unverified account.</p>")).into_response();
+    if action.password.len() > 512
+        || action.password.is_empty()
+        || !state.abuse.allow("oidc_login", &email, 80, 10).await
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            document("<h1>Unable to sign in</h1><p>Invalid credentials or unverified account.</p>"),
+        )
+            .into_response();
     }
     let account = match get_user_by_email(&state, &email).await {
         Ok(a) => a,
@@ -173,22 +224,36 @@ pub async fn login(
         },
         None => None,
     };
-    let hash = credential.map(|v| v.password_hash).unwrap_or_else(|| DUMMY_HASH.into());
+    let hash = credential
+        .map(|v| v.password_hash)
+        .unwrap_or_else(|| DUMMY_HASH.into());
     let valid = match password::verify(&state, action.password, hash).await {
         Ok(v) => v,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
     let Some(account) = account.filter(|a| valid && a.active && a.email_verified) else {
-        return (StatusCode::UNAUTHORIZED, document("<h1>Unable to sign in</h1><p>Invalid credentials or unverified account.</p>")).into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            document("<h1>Unable to sign in</h1><p>Invalid credentials or unverified account.</p>"),
+        )
+            .into_response();
     };
     let token = match create_session(&state, account).await {
         Ok(token) => token,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
-    (jar.add(state.security.issue_cookie(token)), Redirect::to(&query(&action.request))).into_response()
+    (
+        jar.add(state.security.issue_cookie(token)),
+        Redirect::to(&query(&action.request)),
+    )
+        .into_response()
 }
 
-fn client_redirect(request: &AuthorizationRequest, code: Option<&str>, error: Option<&str>) -> Response {
+fn client_redirect(
+    request: &AuthorizationRequest,
+    code: Option<&str>,
+    error: Option<&str>,
+) -> Response {
     // The redirect URI was validated against the registered client immediately
     // before this function is called. Never call it for validation failures.
     let mut target = match Url::parse(&request.redirect_uri) {
@@ -197,14 +262,22 @@ fn client_redirect(request: &AuthorizationRequest, code: Option<&str>, error: Op
     };
     {
         let mut pairs = target.query_pairs_mut();
-        if let Some(code) = code { pairs.append_pair("code", code); }
-        if let Some(error) = error { pairs.append_pair("error", error); }
+        if let Some(code) = code {
+            pairs.append_pair("code", code);
+        }
+        if let Some(error) = error {
+            pairs.append_pair("error", error);
+        }
         pairs.append_pair("state", &request.state);
     }
     (
-        [(header::CACHE_CONTROL, "no-store"), (header::REFERRER_POLICY, "no-referrer")],
+        [
+            (header::CACHE_CONTROL, "no-store"),
+            (header::REFERRER_POLICY, "no-referrer"),
+        ],
         Redirect::to(target.as_str()),
-    ).into_response()
+    )
+        .into_response()
 }
 
 pub async fn consent(
@@ -212,7 +285,10 @@ pub async fn consent(
     jar: CookieJar,
     Form(action): Form<ConsentAction>,
 ) -> Response {
-    if validate_authorization_request(&state.db, &action.request).await.is_err() {
+    if validate_authorization_request(&state.db, &action.request)
+        .await
+        .is_err()
+    {
         return bad_request();
     }
     let Some((account, session)) = browser(&state, &jar).await else {
@@ -223,10 +299,17 @@ pub async fn consent(
         "approve" => {}
         _ => return bad_request(),
     }
-    let Some(client) = get_client(&state.db, &action.request.client_id).await.ok().flatten() else {
+    let Some(client) = get_client(&state.db, &action.request.client_id)
+        .await
+        .ok()
+        .flatten()
+    else {
         return bad_request();
     };
-    if consent::approve(&state.db, account.id, client.id, &action.request.scope).await.is_err() {
+    if consent::approve(&state.db, account.id, client.id, &action.request.scope)
+        .await
+        .is_err()
+    {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
     match grants::issue(&state.db, &action.request, account.id, session.id).await {
