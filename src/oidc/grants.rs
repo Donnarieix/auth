@@ -144,6 +144,16 @@ pub async fn redeem(
     if !app.active || app.client_id != client_id {
         return Err(GrantError::InvalidGrant);
     }
+    // Revoking an approved callback also invalidates codes issued for it.
+    if client_redirect_uri::Entity::find()
+        .filter(client_redirect_uri::COLUMN.client_id.eq(app.id))
+        .filter(client_redirect_uri::COLUMN.redirect_uri.eq(redirect_uri))
+        .one(&tx)
+        .await?
+        .is_none()
+    {
+        return Err(GrantError::InvalidGrant);
+    }
     let account = user::Entity::find_by_id(record.user_id)
         .one(&tx)
         .await?
@@ -350,6 +360,22 @@ mod tests {
         disable_client(&db, &req.client_id).await.unwrap();
         assert!(matches!(
             redeem(&db, &code2, &req.client_id, &req.redirect_uri, VERIFIER).await,
+            Err(GrantError::InvalidGrant)
+        ));
+    }
+
+    #[tokio::test]
+    async fn removing_a_callback_revokes_outstanding_codes_for_it() {
+        use crate::entities::client_redirect_uri;
+        let (db, req, uid, sid) = fixture().await;
+        let code = issue(&db, &req, uid, sid).await.unwrap();
+        client_redirect_uri::Entity::delete_many()
+            .filter(client_redirect_uri::COLUMN.redirect_uri.eq(&req.redirect_uri))
+            .exec(&db)
+            .await
+            .unwrap();
+        assert!(matches!(
+            redeem(&db, &code, &req.client_id, &req.redirect_uri, VERIFIER).await,
             Err(GrantError::InvalidGrant)
         ));
     }
