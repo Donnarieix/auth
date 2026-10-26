@@ -21,5 +21,8 @@ pub async fn logout(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    Ok((StatusCode::NO_CONTENT, jar.remove(state.security.clear_cookie())))
+    Ok((
+        StatusCode::NO_CONTENT,
+        jar.remove(state.security.clear_cookie()),
+    ))
 }

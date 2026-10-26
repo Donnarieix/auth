@@ -8,7 +8,11 @@ use chrono::Utc;
 use sea_orm::{Database, EntityTrait, QueryFilter, sea_query::Expr};
 use tower::ServiceExt;
 
-use crate::{entities::{session, user}, router, schema, state::AppState};
+use crate::{
+    entities::{session, user},
+    router, schema,
+    state::AppState,
+};
 
 async fn test_app() -> (Router, AppState) {
     let db = Database::connect("sqlite::memory:").await.unwrap();
@@ -79,7 +83,12 @@ async fn login(app: &Router) -> String {
     )
     .await;
     assert_eq!(response.status(), StatusCode::OK);
-    let cookie = response.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap();
+    let cookie = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(cookie.starts_with("auth_session="));
     assert!(cookie.contains("HttpOnly"));
     assert!(cookie.contains("SameSite=Lax"));
@@ -103,7 +112,8 @@ async fn origins_are_required_for_all_mutations_and_safe_reads_still_work() {
             None,
             None,
         )
-        .await.status(),
+        .await
+        .status(),
         StatusCode::FORBIDDEN
     );
     assert_eq!(
@@ -116,7 +126,8 @@ async fn origins_are_required_for_all_mutations_and_safe_reads_still_work() {
             Some("http://evil.example"),
             Some("cross-site"),
         )
-        .await.status(),
+        .await
+        .status(),
         StatusCode::FORBIDDEN
     );
     assert_eq!(
@@ -129,17 +140,28 @@ async fn origins_are_required_for_all_mutations_and_safe_reads_still_work() {
             Some("http://127.0.0.1:3000"),
             Some("cross-site"),
         )
-        .await.status(),
+        .await
+        .status(),
         StatusCode::FORBIDDEN
     );
     assert_eq!(
-        request(&app, Method::POST, "/password/reset/request", "{}", None, None, None)
-            .await.status(),
+        request(
+            &app,
+            Method::POST,
+            "/password/reset/request",
+            "{}",
+            None,
+            None,
+            None
+        )
+        .await
+        .status(),
         StatusCode::FORBIDDEN
     );
     assert_eq!(
         request(&app, Method::GET, "/health", "", None, None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::OK
     );
     assert!(user::Entity::find().one(&state.db).await.unwrap().is_none());
@@ -154,12 +176,14 @@ async fn logging_out_revokes_only_the_current_browser_session() {
     assert_ne!(first, second);
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&first), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::OK
     );
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&second), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::OK
     );
 
@@ -174,28 +198,37 @@ async fn logging_out_revokes_only_the_current_browser_session() {
             Some("https://evil.example"),
             Some("cross-site"),
         )
-        .await.status(),
+        .await
+        .status(),
         StatusCode::FORBIDDEN
     );
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&first), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::OK
     );
 
     let response = post(&app, "/logout", "", Some(&first)).await;
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
-    let cleared = response.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap();
+    let cleared = response
+        .headers()
+        .get(header::SET_COOKIE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(cleared.contains("auth_session="));
     assert!(cleared.contains("Max-Age=0"));
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&first), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&second), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::OK
     );
 
@@ -211,15 +244,24 @@ async fn expired_sessions_are_rejected_and_revoked() {
     let cookie = login(&app).await;
 
     session::Entity::update_many()
-        .col_expr(session::COLUMN.expires_at, Expr::value(Utc::now() - chrono::Duration::seconds(1)))
+        .col_expr(
+            session::COLUMN.expires_at,
+            Expr::value(Utc::now() - chrono::Duration::seconds(1)),
+        )
         .exec(&state.db)
-        .await.unwrap();
+        .await
+        .unwrap();
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&cookie), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::UNAUTHORIZED
     );
-    let after = session::Entity::find().one(&state.db).await.unwrap().unwrap();
+    let after = session::Entity::find()
+        .one(&state.db)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(!after.active);
 }
 
@@ -235,15 +277,18 @@ async fn disabling_a_user_revokes_existing_sessions_even_after_reactivation() {
         .col_expr(user::COLUMN.active, Expr::value(false))
         .filter(user::COLUMN.id.eq(account.id))
         .exec(&state.db)
-        .await.unwrap();
+        .await
+        .unwrap();
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&first), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&second), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::UNAUTHORIZED
     );
     assert_eq!(
@@ -252,7 +297,9 @@ async fn disabling_a_user_revokes_existing_sessions_even_after_reactivation() {
             "/login",
             r#"{"email":"known@example.com","password":"Secure password 123!"}"#,
             None
-        ).await.status(),
+        )
+        .await
+        .status(),
         StatusCode::UNAUTHORIZED
     );
 
@@ -260,11 +307,13 @@ async fn disabling_a_user_revokes_existing_sessions_even_after_reactivation() {
         .col_expr(user::COLUMN.active, Expr::value(true))
         .filter(user::COLUMN.id.eq(account.id))
         .exec(&state.db)
-        .await.unwrap();
+        .await
+        .unwrap();
     // Re-enabling does not resurrect sessions revoked at deactivation.
     assert_eq!(
         request(&app, Method::GET, "/me", "", Some(&first), None, None)
-            .await.status(),
+            .await
+            .status(),
         StatusCode::UNAUTHORIZED
     );
     let all = session::Entity::find().all(&state.db).await.unwrap();

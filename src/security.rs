@@ -34,11 +34,17 @@ impl SecurityConfig {
 
     pub fn for_origin(raw: &str) -> Result<Self, &'static str> {
         let origin = raw.trim_end_matches('/');
-        let uri: Uri = origin.parse().map_err(|_| "AUTH_PUBLIC_ORIGIN is not an HTTP URI")?;
-        let scheme = uri.scheme_str().ok_or("AUTH_PUBLIC_ORIGIN needs a scheme")?;
+        let uri: Uri = origin
+            .parse()
+            .map_err(|_| "AUTH_PUBLIC_ORIGIN is not an HTTP URI")?;
+        let scheme = uri
+            .scheme_str()
+            .ok_or("AUTH_PUBLIC_ORIGIN needs a scheme")?;
         let authority = uri.authority().ok_or("AUTH_PUBLIC_ORIGIN needs a host")?;
         if authority.as_str().contains('@')
-            || uri.path_and_query().is_some_and(|path| path.as_str() != "/")
+            || uri
+                .path_and_query()
+                .is_some_and(|path| path.as_str() != "/")
         {
             return Err("AUTH_PUBLIC_ORIGIN must contain only a scheme and host");
         }
@@ -86,7 +92,10 @@ pub async fn require_same_origin(
     request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if matches!(*request.method(), Method::POST | Method::PUT | Method::PATCH | Method::DELETE) {
+    if matches!(
+        *request.method(),
+        Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+    ) {
         let origin = request
             .headers()
             .get(header::ORIGIN)
