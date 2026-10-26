@@ -80,6 +80,11 @@ const SESSION_SECURITY_SCHEMA: &[&str] = &[
     "UPDATE sessions SET active = 0 WHERE user_id IN (SELECT id FROM users WHERE active = 0)",
 ];
 
+const CLIENT_REGISTRY_SCHEMA: &[&str] = &[
+    r#"ALTER TABLE clients ADD COLUMN client_type TEXT NOT NULL DEFAULT 'web'
+       CHECK (client_type IN ('web', 'desktop'))"#,
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -94,7 +99,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 3 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 4 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -160,6 +165,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (3)",
+        ))
+        .await?;
+    }
+
+    let has_v4 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 4",
+        ))
+        .await?
+        .is_some();
+    if !has_v4 {
+        for sql in CLIENT_REGISTRY_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (4)",
         ))
         .await?;
     }
