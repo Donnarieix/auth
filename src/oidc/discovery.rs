@@ -48,7 +48,10 @@ impl ProviderMetadata {
 
 /// This route is NOT wired into the HTTP router until /authorize and /token
 /// are implemented and tested. Misleading metadata would be dangerous.
-#[expect(dead_code, reason = "Provider discovery is gated on end-to-end OIDC readiness")]
+#[expect(
+    dead_code,
+    reason = "Provider discovery is gated on end-to-end OIDC readiness"
+)]
 pub async fn discovery(
     State(state): State<AppState>,
 ) -> Result<Json<ProviderMetadata>, StatusCode> {
@@ -72,8 +75,14 @@ mod tests {
         let metadata = ProviderMetadata::new("https://auth.example.test").unwrap();
         let json = serde_json::to_value(metadata).unwrap();
         assert_eq!(json["issuer"], "https://auth.example.test");
-        assert_eq!(json["jwks_uri"], "https://auth.example.test/.well-known/jwks.json");
-        assert_eq!(json["authorization_endpoint"], "https://auth.example.test/authorize");
+        assert_eq!(
+            json["jwks_uri"],
+            "https://auth.example.test/.well-known/jwks.json"
+        );
+        assert_eq!(
+            json["authorization_endpoint"],
+            "https://auth.example.test/authorize"
+        );
         assert_eq!(json["token_endpoint_auth_methods_supported"][0], "none");
         assert_eq!(json["code_challenge_methods_supported"][0], "S256");
         assert_eq!(json["response_types_supported"][0], "code");
