@@ -113,9 +113,13 @@ async fn verification_codes_are_hashed_single_use_and_email_bound() {
         .await
         .unwrap();
     assert_eq!(
-        post(&app, "/email/verification/request", r#"{"email":"known@example.com"}"#)
-            .await
-            .status(),
+        post(
+            &app,
+            "/email/verification/request",
+            r#"{"email":"known@example.com"}"#,
+        )
+        .await
+        .status(),
         StatusCode::ACCEPTED
     );
     let pending = received(&mut rx).await;
