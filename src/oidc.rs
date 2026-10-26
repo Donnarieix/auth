@@ -1,3 +1,4 @@
+pub mod grants;
 //! Fail-closed validation of OIDC Authorization Code + S256 PKCE requests.
 //! No authorization endpoint is exposed until issuing codes and signing tokens
 //! are fully implemented and tested.
