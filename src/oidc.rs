@@ -141,7 +141,7 @@ mod tests {
         let db = Database::connect("sqlite::memory:").await.unwrap();
         schema::apply(&db).await.unwrap();
         let redirect = "https://client.example.com/callback".to_owned();
-        let client_id = register_client(&db, "Client", ClientType::Web, &[redirect.clone()])
+        let client_id = register_client(&db, "Client", ClientType::Web, std::slice::from_ref(&redirect))
             .await
             .unwrap();
 
