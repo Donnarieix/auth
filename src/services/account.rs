@@ -3,8 +3,7 @@ use axum::http::StatusCode;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter, TransactionTrait,
-    sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -120,6 +119,27 @@ pub async fn consume(
     if decoded.len() != 32 || raw_token.len() != 43 {
         return Err(StatusCode::BAD_REQUEST);
     }
+    let digest = Sha256::digest(raw_token.as_bytes()).to_vec();
+
+    // Avoid invoking the expensive password hasher for random, expired, or
+    // already consumed codes. The actual consumption is rechecked atomically.
+    if matches!(purpose, Purpose::ResetPassword) {
+        if !state.abuse.allow("reset_confirm", raw_token, 60, 4).await {
+            return Err(StatusCode::TOO_MANY_REQUESTS);
+        }
+        let candidate = account_token::Entity::find()
+            .filter(account_token::COLUMN.token_hash.eq(digest.clone()))
+            .filter(account_token::COLUMN.purpose.eq(purpose.key()))
+            .filter(account_token::COLUMN.consumed_at.is_null())
+            .filter(account_token::COLUMN.expires_at.gt(Utc::now()))
+            .one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if candidate.is_none() {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+
     let new_hash = if matches!(purpose, Purpose::ResetPassword) {
         let password = new_password.ok_or(StatusCode::BAD_REQUEST)?;
         if !valid_password(&password) {
@@ -129,8 +149,6 @@ pub async fn consume(
     } else {
         None
     };
-
-    let digest = Sha256::digest(raw_token.as_bytes()).to_vec();
     let now = Utc::now();
     let tx = state
         .db
