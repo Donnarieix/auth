@@ -369,6 +369,7 @@ mod tests {
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
+            authenticated_at: Utc::now(),
         };
         let old_token = previous.sign_id_token(&grant, &user, Utc::now()).unwrap();
         let old_jwk = rotating
@@ -396,6 +397,7 @@ mod tests {
             client_id: "client-1".into(),
             scope: "openid".into(),
             nonce: "unique-auth-nonce-1234".into(),
+            authenticated_at: Utc::now(),
         };
         user.email_verified = false;
         assert_eq!(
