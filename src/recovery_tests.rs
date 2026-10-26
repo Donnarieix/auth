@@ -7,7 +7,7 @@ use axum::{
     response::Response,
 };
 use chrono::Utc;
-use sea_orm::{ColumnTrait, Database, EntityTrait, QueryFilter, sea_query::Expr};
+use sea_orm::{Database, EntityTrait, QueryFilter, sea_query::Expr};
 use tokio::{sync::mpsc, time::timeout};
 use tower::ServiceExt;
 

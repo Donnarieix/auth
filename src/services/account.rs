@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter, TransactionTrait,
     sea_query::Expr,
 };
 use sha2::{Digest, Sha256};

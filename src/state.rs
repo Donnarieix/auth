@@ -17,6 +17,7 @@ pub struct AppState {
 }
 
 impl AppState {
+    #[cfg(test)]
     pub fn with_db(db: DatabaseConnection) -> Self {
         Self::with_mailer(db, Mailer::Disabled)
     }
