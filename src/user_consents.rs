@@ -97,7 +97,10 @@ pub async fn revoke(
 
 #[cfg(test)]
 mod tests {
-    use axum::{body::Body, http::{header, Method, Request, StatusCode}};
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode, header},
+    };
     use chrono::{Duration, Utc};
     use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database, EntityTrait};
     use tower::ServiceExt;
