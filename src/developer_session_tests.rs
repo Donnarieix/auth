@@ -152,10 +152,13 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     )
     .await;
     assert_eq!(disabled_again.status(), StatusCode::NOT_FOUND);
-    let disable_audit = inspect_db.query_one_raw(Statement::from_string(
-        DbBackend::Sqlite,
-        "SELECT id FROM developer_admin_events WHERE event_type LIKE 'client_disabled:%'",
-    )).await.unwrap();
+    let disable_audit = inspect_db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT id FROM developer_admin_events WHERE event_type LIKE 'client_disabled:%'",
+        ))
+        .await
+        .unwrap();
     assert!(disable_audit.is_some());
     let logout = call(
         &app,
