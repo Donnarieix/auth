@@ -183,3 +183,36 @@ The token endpoint supports registered public `desktop` clients (no client secre
 ## Implementation tracking
 
 See the repository issues for the scope, decisions and planned work. All imported code is subject to review and CI checks before being merged.
+
+## Developer administration identity (prototype)
+
+Developer administrators are **not** normal SSO users. A separate `developer_administrators`
+table (schema version 9) holds high-entropy token digests, with an independent
+security-event table for future privileged actions.
+
+A trusted server operator may initialize the very first administrator locally:
+
+```sh
+cargo run -- admin bootstrap operator
+```
+
+This command works only when no developer administrator exists. It generates a
+random 32-byte credential, prints it once to the operator's terminal, and
+stores only its SHA-256 digest. **Store it in a password manager, never a shell
+history, repository, browser local storage or log.** Do not run on an untrusted
+terminal. Currently there is no self-service recovery or additional-admin
+enrollment; losing this bootstrap token requires a controlled operator
+procedure.
+
+A deliberately read-only proof of isolation is exposed as
+`GET /developer/clients`, requiring `Authorization: Bearer <token>`.
+It lists client names, identifiers, types, active states and a boolean
+indicating whether a confidential credential exists; **it never returns client
+secrets or end-user data**. An ordinary SSO session cookie cannot access it.
+
+**Important:** This is only an administration foundation, not the final
+developer UI. There is no administrator browser login, MFA, secure token
+rotation, privileged write API or recovery flow yet. Continue to manage
+registered clients using trusted local CLI access. Do not publicly deploy
+until the missing security and operational features are implemented and
+independently reviewed.
