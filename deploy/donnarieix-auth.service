@@ -1,0 +1,33 @@
+[Unit]
+Description=Donnarieix Auth (loopback-only OpenID Connect issuer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=donnarieix-auth
+Group=donnarieix-auth
+UMask=0077
+WorkingDirectory=/var/lib/donnarieix-auth
+EnvironmentFile=/etc/donnarieix-auth/auth.env
+ExecStart=/usr/local/bin/donnarieix-auth
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StateDirectory=donnarieix-auth
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/donnarieix-auth
+
+[Install]
+WantedBy=multi-user.target
