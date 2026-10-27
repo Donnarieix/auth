@@ -1,5 +1,8 @@
+use rsa::{
+    RsaPrivateKey,
+    pkcs8::{EncodePrivateKey, LineEnding},
+};
 use std::{io::Write, path::Path, sync::Arc};
-use rsa::{RsaPrivateKey, pkcs8::{EncodePrivateKey, LineEnding}};
 
 use sea_orm::{Database, DatabaseConnection};
 use tokio::sync::Semaphore;
@@ -22,15 +25,16 @@ pub struct AppState {
 }
 
 impl AppState {
-
     fn development_keys() -> Result<SigningKeys, String> {
         let directory = Path::new("data").join("keys");
-        std::fs::create_dir_all(&directory).map_err(|_| "Cannot create development key directory")?;
+        std::fs::create_dir_all(&directory)
+            .map_err(|_| "Cannot create development key directory")?;
         let file_path = directory.join("dev.private.pem");
         if !file_path.exists() {
             let key = RsaPrivateKey::new(&mut rand_core::OsRng, 2048)
                 .map_err(|_| "Cannot create local RSA key")?;
-            let pem = key.to_pkcs8_pem(LineEnding::LF)
+            let pem = key
+                .to_pkcs8_pem(LineEnding::LF)
                 .map_err(|_| "Cannot encode local RSA key")?;
             let mut file_options = std::fs::OpenOptions::new();
             file_options.write(true).create_new(true);
@@ -39,8 +43,11 @@ impl AppState {
                 use std::os::unix::fs::OpenOptionsExt;
                 file_options.mode(0o600);
             }
-            let mut file = file_options.open(&file_path).map_err(|_| "Cannot save local key")?;
-            file.write_all(pem.as_bytes()).map_err(|_| "Cannot write local key")?;
+            let mut file = file_options
+                .open(&file_path)
+                .map_err(|_| "Cannot save local key")?;
+            file.write_all(pem.as_bytes())
+                .map_err(|_| "Cannot write local key")?;
         }
         let pem = std::fs::read_to_string(&file_path).map_err(|_| "Cannot read local key")?;
         SigningKeys::from_pem("http://127.0.0.1:3000", "development-local", &pem, &[])
@@ -78,8 +85,11 @@ impl AppState {
         let configured = SigningKeys::from_env(&security.origin)
             .expect("Invalid OIDC signing key configuration");
         state.oidc_keys = configured
-            .or_else(|| (!security.secure).then(|| Self::development_keys()
-                .expect("Cannot initialize loopback signing key")))
+            .or_else(|| {
+                (!security.secure).then(|| {
+                    Self::development_keys().expect("Cannot initialize loopback signing key")
+                })
+            })
             .map(Arc::new);
         state.security = security;
         state
