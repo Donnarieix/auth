@@ -287,6 +287,10 @@ pub async fn rotate_secret(
             chrono::Utc::now().to_rfc3339().into(),
         ],
     )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(RotatedSecret { client_secret: secret }))
+    tx.commit()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(RotatedSecret {
+        client_secret: secret,
+    }))
 }
