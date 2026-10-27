@@ -51,33 +51,52 @@ async fn developer_browser_session_is_isolated_and_revocable() {
         ("content-type", "application/json"),
     ];
     let invalid = call(
-        &app, Method::POST, "/developer/login",
-        r#"{"username":"operator","token":"wrong"}"#.into(), &headers,
-    ).await;
+        &app,
+        Method::POST,
+        "/developer/login",
+        r#"{"username":"operator","token":"wrong"}"#.into(),
+        &headers,
+    )
+    .await;
     assert_eq!(invalid.status(), StatusCode::UNAUTHORIZED);
     let login = call(
-        &app, Method::POST, "/developer/login",
+        &app,
+        Method::POST,
+        "/developer/login",
         format!(r#"{{"username":"operator","token":"{token}"}}"#),
         &headers,
-    ).await;
+    )
+    .await;
     assert_eq!(login.status(), StatusCode::OK);
     let cookie = login.headers()[header::SET_COOKIE].to_str().unwrap();
     assert!(cookie.contains("HttpOnly"));
     assert!(cookie.contains("SameSite=Strict"));
     let session = cookie.split(';').next().unwrap();
     let profile = call(
-        &app, Method::GET, "/developer/clients", String::new(),
+        &app,
+        Method::GET,
+        "/developer/clients",
+        String::new(),
         &[("cookie", session)],
-    ).await;
+    )
+    .await;
     assert_eq!(profile.status(), StatusCode::OK);
     let logout = call(
-        &app, Method::POST, "/developer/logout", String::new(),
+        &app,
+        Method::POST,
+        "/developer/logout",
+        String::new(),
         &[("origin", "http://127.0.0.1:3000"), ("cookie", session)],
-    ).await;
+    )
+    .await;
     assert_eq!(logout.status(), StatusCode::OK);
     let rejected = call(
-        &app, Method::GET, "/developer/clients", String::new(),
+        &app,
+        Method::GET,
+        "/developer/clients",
+        String::new(),
         &[("cookie", session)],
-    ).await;
+    )
+    .await;
     assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
 }
