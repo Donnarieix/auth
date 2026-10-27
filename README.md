@@ -210,9 +210,21 @@ It lists client names, identifiers, types, active states and a boolean
 indicating whether a confidential credential exists; **it never returns client
 secrets or end-user data**. An ordinary SSO session cookie cannot access it.
 
-**Important:** This is only an administration foundation, not the final
-developer UI. There is no administrator browser login, MFA, secure token
-rotation, privileged write API or recovery flow yet. Continue to manage
-registered clients using trusted local CLI access. Do not publicly deploy
+The read-only browser console is at `GET /developer`. Administrators sign in
+with the separately bootstrapped username and high-entropy credential; this
+creates a **separate**, 30-minute HttpOnly, SameSite=Strict browser session.
+Logout revokes only this developer session; operator-side credential rotation
+revokes all developer sessions for the account. Ordinary end-user SSO cookies
+cannot authenticate to the developer console. To recover or rotate a lost
+operator credential on a trusted host, run:
+
+```sh
+cargo run -- admin token rotate operator
+```
+
+**Important:** This is a read-only developer console prototype, not a final
+administration product. MFA, privileged browser write operations, multiple-admin
+onboarding and a complete operational review remain outstanding. Continue to
+manage registered clients using trusted local CLI access. Do not publicly deploy
 until the missing security and operational features are implemented and
 independently reviewed.
