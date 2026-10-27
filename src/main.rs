@@ -35,6 +35,8 @@ mod services;
 mod state;
 
 #[cfg(test)]
+mod developer_session_tests;
+#[cfg(test)]
 mod integration_tests;
 #[cfg(test)]
 mod oidc_flow_tests;
