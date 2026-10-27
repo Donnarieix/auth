@@ -148,7 +148,9 @@ impl SigningKeys {
             _ => return Err("OIDC signing key and key ID must be configured together".into()),
         };
         if !issuer.starts_with("https://") && issuer != "http://127.0.0.1:3000" {
-            return Err("OIDC signing requires HTTPS or the exact loopback development origin".into());
+            return Err(
+                "OIDC signing requires HTTPS or the exact loopback development origin".into(),
+            );
         }
         let path = Path::new(&key_file);
         #[cfg(unix)]
