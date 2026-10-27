@@ -1,8 +1,13 @@
 //! Authenticated developer client registration, independent of end-user SSO.
-use axum::{Json, extract::{Path, State}, http::StatusCode, response::Html};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+    response::Html,
+};
 use axum_extra::extract::CookieJar;
-use serde::{Deserialize, Serialize};
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -91,12 +96,19 @@ pub async fn disable(
     {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
-    let tx = state.db.begin().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let updated = tx.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        "UPDATE clients SET active = 0 WHERE client_id = ? AND active = 1",
-        [client_id.clone().into()],
-    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let updated = tx
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE clients SET active = 0 WHERE client_id = ? AND active = 1",
+            [client_id.clone().into()],
+        ))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if updated.rows_affected() != 1 {
         return Err(StatusCode::NOT_FOUND);
     }
@@ -110,6 +122,8 @@ pub async fn disable(
             chrono::Utc::now().to_rfc3339().into(),
         ],
     )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(DisabledClient { disabled: true }))
 }
