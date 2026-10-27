@@ -24,7 +24,7 @@ use crate::{
     router, schema,
     security::SecurityConfig,
     services::{
-        client::{ClientType, register_client},
+        client::{ClientType, register_client, rotate_web_client_secret},
         session::generate_token,
     },
     state::AppState,
@@ -51,17 +51,23 @@ async fn request(
         .unwrap()
 }
 
-async fn fixture() -> (Router, String, String) {
+async fn fixture_for(kind: ClientType, redirect: &str) -> (Router, String, String, Option<String>) {
     let db = Database::connect("sqlite::memory:").await.unwrap();
     schema::apply(&db).await.unwrap();
     let public_client = register_client(
         &db,
         "Test Client",
-        ClientType::Desktop,
-        &[REDIRECT.to_owned()],
+        kind,
+        &[redirect.to_owned()],
     )
     .await
     .unwrap();
+
+    let secret = if kind == ClientType::Web {
+        Some(rotate_web_client_secret(&db, &public_client).await.unwrap())
+    } else {
+        None
+    };
 
     let user_id = Uuid::new_v4();
     let session_id = Uuid::new_v4();
@@ -116,14 +122,20 @@ async fn fixture() -> (Router, String, String) {
         router(state),
         public_client,
         format!("__Host-auth_session={raw_cookie}"),
+        secret,
     )
 }
 
-fn authorization_form(client: &str) -> String {
+async fn fixture() -> (Router, String, String) {
+    let (app, client, cookie, _) = fixture_for(ClientType::Desktop, REDIRECT).await;
+    (app, client, cookie)
+}
+
+fn authorization_form_for(client: &str, redirect: &str) -> String {
     url::form_urlencoded::Serializer::new(String::new())
         .append_pair("response_type", "code")
         .append_pair("client_id", client)
-        .append_pair("redirect_uri", REDIRECT)
+        .append_pair("redirect_uri", redirect)
         .append_pair("scope", "openid profile email")
         .append_pair("state", "opaque-unique-state-value-1234")
         .append_pair("nonce", "opaque-unique-nonce-value-1234")
@@ -132,7 +144,11 @@ fn authorization_form(client: &str) -> String {
         .finish()
 }
 
-fn token_form(client: &str, code: &str, verifier: &str) -> String {
+fn authorization_form(client: &str) -> String {
+    authorization_form_for(client, REDIRECT)
+}
+
+fn token_form_for(client: &str, redirect: &str, code: &str, verifier: &str) -> String {
     url::form_urlencoded::Serializer::new(String::new())
         .append_pair("grant_type", "authorization_code")
         .append_pair("client_id", client)
@@ -140,6 +156,80 @@ fn token_form(client: &str, code: &str, verifier: &str) -> String {
         .append_pair("code", code)
         .append_pair("code_verifier", verifier)
         .finish()
+}
+
+fn token_form(client: &str, code: &str, verifier: &str) -> String {
+    token_form_for(client, REDIRECT, code, verifier)
+}
+
+#[tokio::test]
+async fn confidential_web_client_requires_secret_and_pkce() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let redirect = "https://web.example.test/oauth/callback";
+    let (app, client, cookie, secret) = fixture_for(ClientType::Web, redirect).await;
+    let form = authorization_form_for(&client, redirect);
+    let approval = request(
+        &app,
+        Method::POST,
+        "/authorize/approve",
+        form,
+        &[
+            ("cookie", &cookie),
+            ("origin", ORIGIN),
+            ("content-type", "application/x-www-form-urlencoded"),
+        ],
+    )
+    .await;
+    assert_eq!(approval.status(), StatusCode::SEE_OTHER);
+    let location = approval.headers()[header::LOCATION].to_str().unwrap();
+    let callback = url::Url::parse(location).unwrap();
+    assert_eq!(callback.host_str(), Some("web.example.test"));
+    let code = callback.query_pairs().find(|(k, _)| k == "code").unwrap().1.to_string();
+    let payload = token_form_for(&client, redirect, &code, VERIFIER);
+    let no_credentials = request(
+        &app,
+        Method::POST,
+        "/token",
+        payload.clone(),
+        &[("content-type", "application/x-www-form-urlencoded")],
+    ).await;
+    assert_eq!(no_credentials.status(), StatusCode::UNAUTHORIZED);
+    let incorrect = STANDARD.encode(format!("{client}:{}", "z".repeat(43)));
+    let rejected = request(
+        &app,
+        Method::POST,
+        "/token",
+        payload.clone(),
+        &[
+            ("content-type", "application/x-www-form-urlencoded"),
+            ("authorization", &format!("Basic {incorrect}")),
+        ],
+    ).await;
+    assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
+    let basic = STANDARD.encode(format!("{client}:{}", secret.unwrap()));
+    let success = request(
+        &app,
+        Method::POST,
+        "/token",
+        payload.clone(),
+        &[
+            ("content-type", "application/x-www-form-urlencoded"),
+            ("authorization", &format!("Basic {basic}")),
+        ],
+    ).await;
+    assert_eq!(success.status(), StatusCode::OK);
+    let replay = request(
+        &app,
+        Method::POST,
+        "/token",
+        payload,
+        &[
+            ("content-type", "application/x-www-form-urlencoded"),
+            ("authorization", &format!("Basic {basic}")),
+        ],
+    ).await;
+    assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
