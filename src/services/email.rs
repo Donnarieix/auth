@@ -122,16 +122,21 @@ mod local_outbox_tests {
 
     #[tokio::test]
     async fn local_outbox_writes_one_message_without_logging_verification_codes() {
-        let path = std::env::temp_dir()
-            .join(format!("auth-local-outbox-{}", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("auth-local-outbox-{}", uuid::Uuid::new_v4()));
         let mailer = Mailer::LocalOutbox(path.clone());
         assert!(mailer.enabled());
-        mailer.send(Mail {
-            recipient: "user@example.test".into(),
-            subject: "Verification".into(),
-            body: "Code: synthetic-test-only".into(),
-        }).await.unwrap();
-        let files = std::fs::read_dir(&path).unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+        mailer
+            .send(Mail {
+                recipient: "user@example.test".into(),
+                subject: "Verification".into(),
+                body: "Code: synthetic-test-only".into(),
+            })
+            .await
+            .unwrap();
+        let files = std::fs::read_dir(&path)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
         assert_eq!(files.len(), 1);
         let data = std::fs::read_to_string(files[0].path()).unwrap();
         assert!(data.contains("Code: synthetic-test-only"));
