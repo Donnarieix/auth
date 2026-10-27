@@ -1,11 +1,11 @@
 //! Separate developer administration identity. No end-user session or cookie
 //! grants access to developer endpoints. Tokens are created offline.
-use axum_extra::extract::CookieJar;
 use axum::{
     Json,
     extract::State,
     http::{HeaderMap, StatusCode, header},
 };
+use axum_extra::extract::CookieJar;
 use sea_orm::{ConnectionTrait, DbBackend, EntityTrait, Statement};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -57,7 +57,9 @@ pub async fn list_clients(
     jar: CookieJar,
 ) -> Result<Json<Vec<DeveloperClient>>, StatusCode> {
     if authenticated_administrator(&state, &headers).await.is_err()
-        && crate::developer_session::authenticated_cookie(&state, &jar).await.is_none()
+        && crate::developer_session::authenticated_cookie(&state, &jar)
+            .await
+            .is_none()
     {
         return Err(StatusCode::UNAUTHORIZED);
     }
