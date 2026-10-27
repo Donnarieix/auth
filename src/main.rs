@@ -54,7 +54,10 @@ fn router(state: AppState) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
-        .route("/developer/clients", get(developer::list_clients).post(developer_manage::create))
+        .route(
+            "/developer/clients",
+            get(developer::list_clients).post(developer_manage::create),
+        )
         .route("/developer/new-client", get(developer_manage::create_page))
         .route("/developer", get(developer_session::page))
         .route("/developer/login", post(developer_session::login))
