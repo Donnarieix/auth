@@ -60,6 +60,10 @@ fn router(state: AppState) -> Router {
         )
         .route("/developer/new-client", get(developer_manage::create_page))
         .route(
+            "/developer/clients/{id}/redirects",
+            post(developer_manage::replace_redirects),
+        )
+        .route(
             "/developer/clients/{id}/disable",
             post(developer_manage::disable),
         )
