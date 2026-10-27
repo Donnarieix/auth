@@ -59,9 +59,18 @@ fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/assets/account.js", get(browser_assets::account))
         .route("/assets/developer.js", get(browser_assets::developer))
-        .route("/assets/manage-client.js", get(browser_assets::manage_client))
-        .route("/assets/register-client.js", get(browser_assets::register_client))
-        .route("/assets/authorize-login.js", get(browser_assets::authorize_login))
+        .route(
+            "/assets/manage-client.js",
+            get(browser_assets::manage_client),
+        )
+        .route(
+            "/assets/register-client.js",
+            get(browser_assets::register_client),
+        )
+        .route(
+            "/assets/authorize-login.js",
+            get(browser_assets::authorize_login),
+        )
         .route("/account", get(account_ui::page))
         .route(
             "/developer/clients",
