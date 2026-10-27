@@ -20,6 +20,7 @@ use crate::{
 
 mod admin;
 mod developer;
+mod developer_session;
 mod entities;
 mod middleware;
 #[expect(
@@ -51,6 +52,9 @@ fn router(state: AppState) -> Router {
     let mut app = Router::new()
         .route("/health", get(health))
         .route("/developer/clients", get(developer::list_clients))
+        .route("/developer", get(developer_session::page))
+        .route("/developer/login", post(developer_session::login))
+        .route("/developer/logout", post(developer_session::logout))
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/email/verification/request", post(request_verification))
