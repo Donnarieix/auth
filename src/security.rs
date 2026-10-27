@@ -1,7 +1,7 @@
 //! Browser-facing session policy. HTTP mode is deliberately limited to loopback.
 use axum::{
     extract::{Request, State},
-    http::{Method, StatusCode, Uri, header},
+    http::{HeaderValue, Method, StatusCode, Uri, header},
     middleware::Next,
     response::Response,
 };
@@ -86,6 +86,49 @@ impl SecurityConfig {
     }
 }
 
+const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+
+fn attach_security_headers(response: &mut Response, secure: bool) {
+    let headers = response.headers_mut();
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    // Preserve cacheability of public signing keys and discovery metadata;
+    // authenticated, sensitive responses remain uncached by default.
+    if !headers.contains_key(header::CACHE_CONTROL) {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    headers.insert(
+        "content-security-policy",
+        HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+    );
+    if secure {
+        headers.insert(
+            header::STRICT_TRANSPORT_SECURITY,
+            HeaderValue::from_static("max-age=31536000"),
+        );
+    }
+}
+
+/// Apply defense-in-depth browser headers to every response, including errors.
+/// Inline JavaScript is currently used by the sign-in prototype; replace it
+/// with nonce-based scripts before claiming production-grade CSP hardening.
+pub async fn security_response_headers(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let mut response = next.run(request).await;
+    attach_security_headers(&mut response, state.security.secure);
+    response
+}
+
 /// Reject state-changing browser requests without a trustworthy, exact origin.
 /// SameSite=Lax is defense in depth, not the sole CSRF control.
 pub async fn require_same_origin(
@@ -124,7 +167,39 @@ pub async fn require_same_origin(
 
 #[cfg(test)]
 mod tests {
-    use super::SecurityConfig;
+    use super::{SecurityConfig, attach_security_headers};
+    use axum::{
+        body::Body,
+        http::{Response, header},
+    };
+
+    #[test]
+    fn response_headers_protect_sensitive_pages_and_https() {
+        let mut response = Response::new(Body::empty());
+        attach_security_headers(&mut response, false);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(
+            response.headers()[header::X_CONTENT_TYPE_OPTIONS],
+            "nosniff"
+        );
+        assert_eq!(response.headers()["x-frame-options"], "DENY");
+        assert!(
+            !response
+                .headers()
+                .contains_key(header::STRICT_TRANSPORT_SECURITY)
+        );
+        attach_security_headers(&mut response, true);
+        assert_eq!(
+            response.headers()[header::STRICT_TRANSPORT_SECURITY],
+            "max-age=31536000"
+        );
+        assert!(
+            response.headers()["content-security-policy"]
+                .to_str()
+                .unwrap()
+                .contains("frame-ancestors 'none'")
+        );
+    }
 
     #[test]
     fn requires_https_except_explicit_loopback_mode() {
