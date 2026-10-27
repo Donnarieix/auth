@@ -11,7 +11,10 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::{entities::{client, client_redirect_uri}, state::AppState};
+use crate::{
+    entities::{client, client_redirect_uri},
+    state::AppState,
+};
 
 async fn authenticated_administrator(
     state: &AppState,
