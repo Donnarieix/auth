@@ -110,7 +110,10 @@ mod tests {
         entities::{oidc_consent, session, user},
         oidc::consent,
         router, schema,
-        services::{client::{ClientType, register_client, get_client}, session::generate_token},
+        services::{
+            client::{ClientType, get_client, register_client},
+            session::generate_token,
+        },
         state::AppState,
     };
 
