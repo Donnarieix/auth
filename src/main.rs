@@ -62,6 +62,10 @@ fn router(state: AppState) -> Router {
         )
         .route("/developer/new-client", get(developer_manage::create_page))
         .route(
+            "/developer/clients/{id}/secret",
+            post(developer_manage::rotate_secret),
+        )
+        .route(
             "/developer/clients/{id}/redirects",
             post(developer_manage::replace_redirects),
         )
