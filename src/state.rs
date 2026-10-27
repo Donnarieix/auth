@@ -49,7 +49,7 @@ impl AppState {
             .expect("Schema migration refused or failed; do not reuse an old prototype database");
 
         let security = SecurityConfig::from_env().expect("Invalid AUTH_PUBLIC_ORIGIN");
-        let mut state = Self::with_mailer(db, Mailer::from_env());
+        let mut state = Self::with_mailer(db, Mailer::from_env(security.secure));
         state.oidc_keys = SigningKeys::from_env(&security.origin)
             .expect("Invalid OIDC signing key configuration")
             .map(Arc::new);
