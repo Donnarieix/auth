@@ -98,7 +98,11 @@ fn attach_security_headers(response: &mut Response, secure: bool) {
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),
     );
-    headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    // Preserve cacheability of public signing keys and discovery metadata;
+    // authenticated, sensitive responses remain uncached by default.
+    if !headers.contains_key(header::CACHE_CONTROL) {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
     headers.insert(
         "content-security-policy",
