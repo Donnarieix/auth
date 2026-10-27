@@ -154,6 +154,20 @@ const DEVELOPER_IDENTITY_SCHEMA: &[&str] = &[
     )"#,
 ];
 
+const DEVELOPER_SESSION_SCHEMA: &[&str] = &[
+    r#"CREATE TABLE developer_sessions (
+        id TEXT PRIMARY KEY NOT NULL,
+        administrator_id TEXT NOT NULL REFERENCES developer_administrators(id) ON DELETE CASCADE,
+        token_hash BLOB NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1))
+    )"#,
+    "CREATE INDEX developer_sessions_admin_idx ON developer_sessions(administrator_id)",
+    r#"CREATE TRIGGER developer_token_rotation_revokes_sessions
+        AFTER UPDATE OF token_hash ON developer_administrators
+        BEGIN UPDATE developer_sessions SET revoked = 1 WHERE administrator_id = NEW.id; END"#,
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -168,7 +182,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 9 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 10 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -330,6 +344,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (9)",
+        ))
+        .await?;
+    }
+
+    let has_v10 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 10",
+        ))
+        .await?
+        .is_some();
+    if !has_v10 {
+        for sql in DEVELOPER_SESSION_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (10)",
         ))
         .await?;
     }

@@ -5,6 +5,7 @@ use axum::{
     extract::State,
     http::{HeaderMap, StatusCode, header},
 };
+use axum_extra::extract::CookieJar;
 use sea_orm::{ConnectionTrait, DbBackend, EntityTrait, Statement};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -53,8 +54,15 @@ pub struct DeveloperClient {
 pub async fn list_clients(
     State(state): State<AppState>,
     headers: HeaderMap,
+    jar: CookieJar,
 ) -> Result<Json<Vec<DeveloperClient>>, StatusCode> {
-    authenticated_administrator(&state, &headers).await?;
+    if authenticated_administrator(&state, &headers).await.is_err()
+        && crate::developer_session::authenticated_cookie(&state, &jar)
+            .await
+            .is_none()
+    {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
     let clients = client::Entity::find()
         .all(&state.db)
         .await
