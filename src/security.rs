@@ -86,16 +86,24 @@ impl SecurityConfig {
     }
 }
 
-
 const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 fn attach_security_headers(response: &mut Response, secure: bool) {
     let headers = response.headers_mut();
-    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
-    headers.insert("content-security-policy", HeaderValue::from_static(CONTENT_SECURITY_POLICY));
+    headers.insert(
+        "content-security-policy",
+        HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+    );
     if secure {
         headers.insert(
             header::STRICT_TRANSPORT_SECURITY,
@@ -156,19 +164,37 @@ pub async fn require_same_origin(
 #[cfg(test)]
 mod tests {
     use super::{SecurityConfig, attach_security_headers};
-    use axum::{body::Body, http::{header, Response}};
+    use axum::{
+        body::Body,
+        http::{Response, header},
+    };
 
     #[test]
     fn response_headers_protect_sensitive_pages_and_https() {
         let mut response = Response::new(Body::empty());
         attach_security_headers(&mut response, false);
         assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
-        assert_eq!(response.headers()[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(
+            response.headers()[header::X_CONTENT_TYPE_OPTIONS],
+            "nosniff"
+        );
         assert_eq!(response.headers()["x-frame-options"], "DENY");
-        assert!(!response.headers().contains_key(header::STRICT_TRANSPORT_SECURITY));
+        assert!(
+            !response
+                .headers()
+                .contains_key(header::STRICT_TRANSPORT_SECURITY)
+        );
         attach_security_headers(&mut response, true);
-        assert_eq!(response.headers()[header::STRICT_TRANSPORT_SECURITY], "max-age=31536000");
-        assert!(response.headers()["content-security-policy"].to_str().unwrap().contains("frame-ancestors 'none'"));
+        assert_eq!(
+            response.headers()[header::STRICT_TRANSPORT_SECURITY],
+            "max-age=31536000"
+        );
+        assert!(
+            response.headers()["content-security-policy"]
+                .to_str()
+                .unwrap()
+                .contains("frame-ancestors 'none'")
+        );
     }
 
     #[test]
