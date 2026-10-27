@@ -42,7 +42,7 @@ impl ProviderMetadata {
             id_token_signing_alg_values_supported: vec!["RS256"],
             scopes_supported: vec!["openid", "profile", "email"],
             grant_types_supported: vec!["authorization_code"],
-            token_endpoint_auth_methods_supported: vec!["none"],
+            token_endpoint_auth_methods_supported: vec!["none", "client_secret_basic"],
             code_challenge_methods_supported: vec!["S256"],
         })
     }

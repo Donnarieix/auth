@@ -164,6 +164,7 @@ mod tests {
             id: Set(cid),
             client_id: Set("test-client".into()),
             client_type: Set("web".into()),
+            client_secret_hash: Set(None),
             name: Set("Test".into()),
             created_at: Set(now),
             active: Set(true),

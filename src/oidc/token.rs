@@ -6,6 +6,7 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
@@ -60,7 +61,38 @@ fn invalid_request() -> (StatusCode, Json<OAuthError>) {
     )
 }
 
-/// For public clients only; no confidential client credentials are accepted.
+/// Accepts public PKCE clients without credentials and web clients
+/// only with a separately configured confidential client secret over HTTP Basic.
+fn valid_web_client_secret(headers: &HeaderMap, id: &str, hash: &[u8]) -> bool {
+    let Some(encoded) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Basic "))
+    else {
+        return false;
+    };
+    let Ok(decoded) = STANDARD.decode(encoded) else {
+        return false;
+    };
+    let Ok(credentials) = std::str::from_utf8(&decoded) else {
+        return false;
+    };
+    let Some((username, password)) = credentials.split_once(':') else {
+        return false;
+    };
+    if username != id || password.len() != 43 || !password.is_ascii() || hash.len() != 32 {
+        return false;
+    }
+    let digest = Sha256::digest(password.as_bytes());
+    digest
+        .iter()
+        .zip(hash)
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+        == 0
+}
+
+/// Public clients must never present client credentials; confidential web
+/// clients must authenticate before an authorization code can be consumed.
 pub async fn token(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -69,8 +101,7 @@ pub async fn token(
     let Some(keys) = &state.oidc_keys else {
         return invalid_request().into_response();
     };
-    if headers.contains_key(header::AUTHORIZATION)
-        || form.grant_type != "authorization_code"
+    if form.grant_type != "authorization_code"
         || form.client_id.len() > 256
         || form.code.len() > 256
         || form.redirect_uri.len() > 2048
@@ -86,6 +117,37 @@ pub async fn token(
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(OAuthError { error: "slow_down" }),
+        )
+            .into_response();
+    }
+
+    let app = match client::Entity::find()
+        .filter(client::COLUMN.client_id.eq(&form.client_id))
+        .filter(client::COLUMN.active.eq(true))
+        .one(&state.db)
+        .await
+    {
+        Ok(Some(app)) => app,
+        _ => return invalid_grant().into_response(),
+    };
+    let client_authenticated = match app.client_type.as_str() {
+        "desktop" => !headers.contains_key(header::AUTHORIZATION),
+        "web" => app
+            .client_secret_hash
+            .as_deref()
+            .is_some_and(|hash| valid_web_client_secret(&headers, &form.client_id, hash)),
+        _ => false,
+    };
+    if !client_authenticated {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(
+                header::WWW_AUTHENTICATE,
+                "Basic realm=\"Donnarieix Auth token\"",
+            )],
+            Json(OAuthError {
+                error: "invalid_client",
+            }),
         )
             .into_response();
     }
@@ -128,9 +190,6 @@ pub async fn token(
         _ => return invalid_grant().into_response(),
     };
 
-    if app.client_type != "desktop" {
-        return invalid_grant().into_response();
-    }
     let (access_token, hash) = generate_token();
     let now = Utc::now();
     let access = oidc_access_token::ActiveModel {
@@ -241,4 +300,33 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> impl
             email_verified: scopes.email.then_some(account.email_verified),
         }),
     ))
+}
+
+#[cfg(test)]
+mod confidential_client_tests {
+    use super::valid_web_client_secret;
+    use axum::http::{HeaderMap, header};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn basic_client_authentication_requires_correct_id_and_secret() {
+        let id = "test-client";
+        let secret = "x".repeat(43);
+        let digest = Sha256::digest(secret.as_bytes()).to_vec();
+        let mut headers = HeaderMap::new();
+        let encoded = STANDARD.encode(format!("{id}:{secret}"));
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Basic {encoded}").parse().unwrap(),
+        );
+        assert!(valid_web_client_secret(&headers, id, &digest));
+        assert!(!valid_web_client_secret(&headers, "other-client", &digest));
+        assert!(!valid_web_client_secret(
+            &headers,
+            id,
+            &Sha256::digest(b"wrong")
+        ));
+        assert!(!valid_web_client_secret(&HeaderMap::new(), id, &digest));
+    }
 }

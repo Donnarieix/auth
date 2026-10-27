@@ -1,10 +1,12 @@
 //! Only an administrator with local database access may register a client.
 //! Never accept client registrations over an unauthenticated public endpoint.
+use crate::services::session::generate_token;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, ModelTrait,
     QueryFilter, TransactionTrait,
 };
+use sha2::{Digest, Sha256};
 use url::{Host, Url};
 use uuid::Uuid;
 
@@ -110,6 +112,7 @@ pub async fn register_client(
         name: Set(name.into()),
         created_at: Set(Utc::now()),
         active: Set(true),
+        client_secret_hash: Set(None),
     }
     .insert(&tx)
     .await?;
@@ -159,6 +162,25 @@ pub async fn is_redirect_uri_allowed(
         .into_iter()
         .any(|uri| uri.redirect_uri == redirect_uri);
     Ok(allowed)
+}
+
+/// Rotates a confidential web-client secret; plaintext is returned once to
+/// the local operator and only the SHA-256 digest is stored in SQLite.
+pub async fn rotate_web_client_secret(
+    db: &DatabaseConnection,
+    public_id: &str,
+) -> Result<String, DbErr> {
+    let app = get_client(db, public_id)
+        .await?
+        .filter(|app| app.client_type == "web")
+        .ok_or_else(|| DbErr::Custom("Unknown or non-web client".into()))?;
+    let (secret, _) = generate_token();
+    let digest = Sha256::digest(secret.as_bytes()).to_vec();
+    use sea_orm::IntoActiveModel;
+    let mut model = app.into_active_model();
+    model.client_secret_hash = Set(Some(digest));
+    model.update(db).await?;
+    Ok(secret)
 }
 
 pub async fn disable_client(db: &DatabaseConnection, public_id: &str) -> Result<bool, DbErr> {

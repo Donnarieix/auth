@@ -12,6 +12,7 @@ pub struct Model {
     pub name: String,
     pub created_at: DateTimeUtc,
     pub active: bool,
+    pub client_secret_hash: Option<Vec<u8>>,
 
     #[sea_orm(has_many)]
     pub redirect_uris: HasMany<super::client_redirect_uri::Entity>,

@@ -113,10 +113,12 @@ pub async fn authorization_page(
     else {
         return error_page(StatusCode::BAD_REQUEST, "Unregistered client.");
     };
-    if app.client_type != "desktop" {
+    if app.client_type != "desktop"
+        && (app.client_type != "web" || app.client_secret_hash.is_none())
+    {
         return error_page(
             StatusCode::BAD_REQUEST,
-            "Only public native clients are supported.",
+            "Unsupported or unconfigured client.",
         );
     }
     let fields = hidden_request(&request);
@@ -181,8 +183,13 @@ pub async fn approve(
     else {
         return error_page(StatusCode::BAD_REQUEST, "Unregistered client.");
     };
-    if app.client_type != "desktop" {
-        return error_page(StatusCode::BAD_REQUEST, "Unsupported client type.");
+    if app.client_type != "desktop"
+        && (app.client_type != "web" || app.client_secret_hash.is_none())
+    {
+        return error_page(
+            StatusCode::BAD_REQUEST,
+            "Unsupported or unconfigured client.",
+        );
     }
     if crate::oidc::consent::approve(&state.db, account.id, app.id, &request.scope)
         .await
