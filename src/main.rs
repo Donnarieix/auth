@@ -59,6 +59,7 @@ fn router(state: AppState) -> Router {
             get(developer::list_clients).post(developer_manage::create),
         )
         .route("/developer/new-client", get(developer_manage::create_page))
+        .route("/developer/clients/{id}/disable", post(developer_manage::disable))
         .route("/developer", get(developer_session::page))
         .route("/developer/login", post(developer_session::login))
         .route("/developer/logout", post(developer_session::logout))
