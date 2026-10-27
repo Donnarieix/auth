@@ -124,6 +124,7 @@ cargo run -- client add web "Example Web App" https://app.example.com/callback
 cargo run -- client add desktop "Example Desktop App" http://127.0.0.1:40404/callback
 cargo run -- client list
 cargo run -- client disable <client-id>
+cargo run -- client secret rotate <web-client-id>
 ```
 
 The `add` command prints a randomly generated public `client_id`. Clients are initially **public clients**, without a client secret, and will be required to use PKCE S256. `web` callbacks must use HTTPS. Native `desktop` callbacks may use HTTPS or an IPv4/IPv6 loopback HTTP URL with a fixed registered port. **Dynamic native loopback ports are not yet implemented.** Wildcards, prefix matching, URL fragments and embedded URL credentials are forbidden.
@@ -175,7 +176,7 @@ An ID token includes only the user's stable UUID `sub` and mandatory OIDC claims
 
 The browser consent flow requires a verified user account and a valid session cookie. The login form communicates with the existing same-origin `POST /login` route. All browser state-changing requests are subject to Origin/CSRF checks; only back-channel `POST /token` is exempt from the Origin requirement because it does not authenticate with cookies.
 
-The public token endpoint **only supports `desktop` clients registered with the exact URI**. It does not accept client passwords or HTTP Basic, issue refresh tokens, or provide confidential web-client authentication. Both code issuance and redemption recheck registered clients, exact redirects, PKCE, verified accounts and consent. Access tokens are opaque and stored only as hashes, expire after five minutes, and become unusable after user deactivation, email un-verification, client deactivation, consent revocation or password reset. JSON responses never expose raw credentials, signing keys or session material in logs.
+The token endpoint supports registered public `desktop` clients (no client secret) and confidential `web` clients that authenticate using HTTP Basic (`client_secret_basic`). Both use Authorization Code + PKCE S256 and exact registered redirects. A newly registered web client is unusable until an operator initializes its secret with `cargo run -- client secret rotate <client-id>`. The secret is printed **once** locally; store it securely in the backend's secret store, never in a browser, Git or logs. Rotating the secret immediately invalidates the previous secret for further code redemption. A web client must exchange codes from its backend, not JavaScript shipped to browsers. The service does not issue refresh tokens. Both code issuance and redemption recheck registered clients, exact redirects, PKCE, verified accounts and consent. Access tokens are opaque and stored only as hashes, expire after five minutes, and become unusable after user deactivation, email un-verification, client deactivation, consent revocation or password reset. JSON responses never expose raw credentials, signing keys or session material in logs.
 
 **Not production-ready:** no public HTTPS service has been deployed, SMTP email sending has not been validated with a real relay, and the independent `auth-test-client` has not yet completed a live end-to-end connection. Security hardening and interoperability review are still necessary, particularly for future confidential web clients and any additional OAuth/OIDC features.
 
