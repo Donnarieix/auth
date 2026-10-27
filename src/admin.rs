@@ -135,3 +135,43 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sha2::{Digest, Sha256};
+    use uuid::Uuid;
+
+    use super::rotate_administrator_token;
+    use crate::schema;
+
+    #[tokio::test]
+    async fn rotation_changes_credential_and_writes_audit_event() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        schema::apply(&db).await.unwrap();
+        let previous = Sha256::digest(b"previous-secret").to_vec();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO developer_administrators(id, username, token_hash, created_at, active) VALUES (?, ?, ?, ?, 1)",
+            [
+                Uuid::new_v4().to_string().into(),
+                "operator".to_owned().into(),
+                previous.clone().into(),
+                chrono::Utc::now().to_rfc3339().into(),
+            ],
+        )).await.unwrap();
+        rotate_administrator_token(&db, "operator").await.unwrap();
+        let row = db.query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT token_hash FROM developer_administrators WHERE username = 'operator'",
+        )).await.unwrap().unwrap();
+        let new_hash: Vec<u8> = row.try_get("", "token_hash").unwrap();
+        assert_ne!(previous, new_hash);
+        let event = db.query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT id FROM developer_admin_events WHERE event_type = 'credential_rotated'",
+        )).await.unwrap();
+        assert!(event.is_some());
+        assert!(rotate_administrator_token(&db, "unknown").await.is_err());
+    }
+}
