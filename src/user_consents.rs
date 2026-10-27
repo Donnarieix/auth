@@ -99,7 +99,8 @@ pub async fn revoke(
 /// Browser view of the current user's granted applications; the endpoints,
 /// not this static page, authenticate the user and enforce CSRF.
 pub async fn page() -> Html<&'static str> {
-    Html(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Connected applications</title></head><body><main><h1>Connected applications</h1><p>Applications listed here can access the scopes you approved. Revoking an application immediately invalidates its current access tokens.</p><ul id="grants"></ul><p id="status" role="status"></p></main><script>
+    Html(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Connected applications</title></head><body><main><h1>Connected applications</h1><p>Applications listed here can access the scopes you approved. Revoking an application immediately invalidates its current access tokens.</p><ul id="grants"></ul><p id="status" role="status"></p></main><script>
 const list=document.getElementById('grants');
 const status=document.getElementById('status');
 async function load(){
