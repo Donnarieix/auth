@@ -23,6 +23,8 @@ The Rust/Axum/SeaORM/SQLite code is a **development-only prototype**. It is not 
 - Security-sensitive changes require tests, review and controlled deployments.
 - Potentially exposed credentials or sessions from the old repository must be revoked or rotated; migrating Git history does not make them safe again.
 
+For a single-checkout local startup procedure, see [Local setup](docs/LOCAL_SETUP.md). The repository is still restricted to synthetic development identities; a CI pass does not establish deployment safety.
+
 ## Development only
 
 Install a stable Rust toolchain, then run:
