@@ -1,11 +1,9 @@
 //! Isolated browser login for developer administrators.
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-    response::Html,
+use axum::{Json, extract::State, http::StatusCode, response::Html};
+use axum_extra::extract::{
+    CookieJar,
+    cookie::{Cookie, SameSite},
 };
-use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -106,7 +104,9 @@ pub async fn authenticated_cookie(state: &AppState, jar: &CookieJar) -> Option<U
         .await
         .ok()??;
     let expires: String = row.try_get("", "expires_at").ok()?;
-    if chrono::DateTime::parse_from_rfc3339(&expires).ok()?.with_timezone(&chrono::Utc)
+    if chrono::DateTime::parse_from_rfc3339(&expires)
+        .ok()?
+        .with_timezone(&chrono::Utc)
         <= chrono::Utc::now()
     {
         return None;
@@ -141,7 +141,8 @@ pub async fn logout(
 }
 
 pub async fn page() -> Html<&'static str> {
-    Html(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Developer console</title></head><body><main><h1>Donnarieix Auth — Developer console</h1><form id="signin"><label>Administrator <input name="username" required autocomplete="username"></label><label>Recovery credential <input type="password" name="token" required autocomplete="current-password"></label><button>Sign in</button></form><p id="status" role="alert"></p><section><h2>Registered applications</h2><ul id="apps"></ul></section><button id="signout">Sign out</button></main><script>
+    Html(
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Developer console</title></head><body><main><h1>Donnarieix Auth — Developer console</h1><form id="signin"><label>Administrator <input name="username" required autocomplete="username"></label><label>Recovery credential <input type="password" name="token" required autocomplete="current-password"></label><button>Sign in</button></form><p id="status" role="alert"></p><section><h2>Registered applications</h2><ul id="apps"></ul></section><button id="signout">Sign out</button></main><script>
 const status = document.getElementById('status');
 async function refresh() {
  const r = await fetch('/developer/clients', {credentials:'same-origin'});
@@ -168,5 +169,6 @@ document.getElementById('signout').addEventListener('click', async () => {
  await refresh();
 });
 refresh();
-</script></body></html>"#)
+</script></body></html>"#,
+    )
 }
