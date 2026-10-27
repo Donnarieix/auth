@@ -176,6 +176,22 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     )
     .await;
     assert_eq!(incorrect_rotation.status(), StatusCode::UNAUTHORIZED);
+    let rotated = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{web_id}/secret"),
+        format!(r#"{{"administrator_token":"{token}"}}"#),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+            ("cookie", session),
+        ],
+    )
+    .await;
+    assert_eq!(rotated.status(), StatusCode::OK);
+    let rotation_data = to_bytes(rotated.into_body(), 2048).await.unwrap();
+    let secret: serde_json::Value = serde_json::from_slice(&rotation_data).unwrap();
+    assert_eq!(secret["client_secret"].as_str().unwrap().len(), 43);
     let unauthorized_disable = call(
         &app,
         Method::POST,
