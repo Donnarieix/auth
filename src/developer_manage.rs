@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     developer_session::authenticated_cookie,
-    services::client::{ClientType, register_client_with_actor},
+    services::client::{ClientType, register_client_with_actor, validate_redirect_uri},
     state::AppState,
 };
 
@@ -126,4 +126,66 @@ pub async fn disable(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(DisabledClient { disabled: true }))
+}
+
+#[derive(Deserialize)]
+pub struct RedirectUpdate {
+    redirect_uris: Vec<String>,
+}
+
+pub async fn replace_redirects(
+    State(state): State<AppState>,
+    Path(client_id): Path<String>,
+    jar: CookieJar,
+    Json(payload): Json<RedirectUpdate>,
+) -> Result<StatusCode, StatusCode> {
+    let actor = authenticated_cookie(&state, &jar)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    if !state.abuse.allow("developer_redirect_update", &actor.to_string(), 30, 10).await {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+    if payload.redirect_uris.is_empty() || payload.redirect_uris.len() > 12 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let unique: std::collections::HashSet<_> = payload.redirect_uris.iter().collect();
+    if unique.len() != payload.redirect_uris.len() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let tx = state.db.begin().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row = tx.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "SELECT id, client_type FROM clients WHERE client_id = ? AND active = 1",
+        [client_id.clone().into()],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.ok_or(StatusCode::NOT_FOUND)?;
+    let internal_id: String = row.try_get("", "id").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let kind: String = row.try_get("", "client_type").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let kind = ClientType::parse(&kind).ok_or(StatusCode::BAD_REQUEST)?;
+    for uri in &payload.redirect_uris {
+        validate_redirect_uri(kind, uri).map_err(|_| StatusCode::BAD_REQUEST)?;
+    }
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "DELETE FROM client_redirect_uris WHERE client_id = ?",
+        [internal_id.clone().into()],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    for uri in &payload.redirect_uris {
+        tx.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO client_redirect_uris (id,client_id,redirect_uri) VALUES (?,?,?)",
+            [Uuid::new_v4().to_string().into(), internal_id.clone().into(), uri.clone().into()],
+        )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    }
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_admin_events (id,administrator_id,event_type,created_at) VALUES (?,?,?,?)",
+        [
+            Uuid::new_v4().to_string().into(),
+            actor.to_string().into(),
+            format!("redirects_updated:{client_id}").into(),
+            chrono::Utc::now().to_rfc3339().into(),
+        ],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::NO_CONTENT)
 }
