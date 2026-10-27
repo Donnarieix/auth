@@ -62,6 +62,7 @@ fn router(state: AppState) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
+        .route("/account/permissions", get(user_consents::page))
         .route("/account", get(account_ui::page))
         .route(
             "/developer/clients",
