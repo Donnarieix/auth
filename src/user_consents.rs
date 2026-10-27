@@ -10,7 +10,6 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr};
 use serde::Serialize;
-use uuid::Uuid;
 
 use crate::{
     entities::{client, oidc_access_token, oidc_consent, user},
