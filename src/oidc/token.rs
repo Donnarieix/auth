@@ -322,7 +322,11 @@ mod confidential_client_tests {
         );
         assert!(valid_web_client_secret(&headers, id, &digest));
         assert!(!valid_web_client_secret(&headers, "other-client", &digest));
-        assert!(!valid_web_client_secret(&headers, id, &Sha256::digest(b"wrong").to_vec()));
+        assert!(!valid_web_client_secret(
+            &headers,
+            id,
+            &Sha256::digest(b"wrong").to_vec()
+        ));
         assert!(!valid_web_client_secret(&HeaderMap::new(), id, &digest));
     }
 }
