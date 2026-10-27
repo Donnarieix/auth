@@ -9,3 +9,8 @@
 /keys/
 *.private.pem
 *.key
+
+# Explicit localhost-only mail capture. Mail bodies contain verification secrets.
+/data/outbox/
+
+/data/keys/

@@ -18,8 +18,10 @@ use crate::{
     state::AppState,
 };
 
+mod account_ui;
 mod admin;
 mod developer;
+mod developer_client_page;
 mod developer_manage;
 mod developer_session;
 mod entities;
@@ -54,11 +56,25 @@ fn router(state: AppState) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
+        .route("/account", get(account_ui::page))
         .route(
             "/developer/clients",
             get(developer::list_clients).post(developer_manage::create),
         )
         .route("/developer/new-client", get(developer_manage::create_page))
+        .route("/developer/manage-client", get(developer_client_page::page))
+        .route(
+            "/developer/clients/{id}/secret",
+            post(developer_manage::rotate_secret),
+        )
+        .route(
+            "/developer/clients/{id}/redirects",
+            post(developer_manage::replace_redirects),
+        )
+        .route(
+            "/developer/clients/{id}/disable",
+            post(developer_manage::disable),
+        )
         .route("/developer", get(developer_session::page))
         .route("/developer/login", post(developer_session::login))
         .route("/developer/logout", post(developer_session::logout))

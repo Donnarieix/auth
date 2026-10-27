@@ -107,7 +107,7 @@ impl SigningKeys {
         private_pem: &str,
         previous: &[(String, String)],
     ) -> Result<Self, String> {
-        if !issuer.starts_with("https://")
+        if (!issuer.starts_with("https://") && issuer != "http://127.0.0.1:3000")
             || issuer.ends_with('/')
             || issuer.contains('?')
             || issuer.contains('#')
@@ -147,8 +147,10 @@ impl SigningKeys {
             }
             _ => return Err("OIDC signing key and key ID must be configured together".into()),
         };
-        if !issuer.starts_with("https://") {
-            return Err("OIDC signing requires an externally configured HTTPS origin".into());
+        if !issuer.starts_with("https://") && issuer != "http://127.0.0.1:3000" {
+            return Err(
+                "OIDC signing requires HTTPS or the exact loopback development origin".into(),
+            );
         }
         let path = Path::new(&key_file);
         #[cfg(unix)]
@@ -337,6 +339,28 @@ mod tests {
         .claims;
         assert_eq!(claims.email.as_deref(), Some("private@example.com"));
         assert_eq!(claims.preferred_username.as_deref(), Some("tester"));
+    }
+
+    #[test]
+    fn local_issuer_only_accepts_exact_loopback_origin() {
+        let (private, _) = keypair();
+        assert!(
+            SigningKeys::from_pem("http://127.0.0.1:3000", "development-local", &private, &[],)
+                .is_ok()
+        );
+        assert!(
+            SigningKeys::from_pem("http://localhost:3000", "development-local", &private, &[],)
+                .is_err()
+        );
+        assert!(
+            SigningKeys::from_pem(
+                "http://192.168.1.10:3000",
+                "development-local",
+                &private,
+                &[],
+            )
+            .is_err()
+        );
     }
 
     #[test]

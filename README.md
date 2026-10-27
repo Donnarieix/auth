@@ -230,3 +230,13 @@ rotation) still require the trusted local CLI. MFA, multiple-admin onboarding,
 independent review and a complete operational security model remain outstanding. Do not publicly deploy
 until the missing security and operational features are implemented and
 independently reviewed.
+
+## One-machine development
+
+For a local, isolated end-to-end setup, see
+[docs/local-staging.md](docs/local-staging.md). It covers the Windows
+PowerShell helper, automatic loopback RSA signing key, local email outbox,
+administrator bootstrap, and the browser account/developer screens.
+
+This is a **local release candidate**, not a production deployment. Do not
+put live credentials or private signing keys into Git.
