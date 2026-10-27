@@ -186,7 +186,10 @@ pub async fn approve(
     if app.client_type != "desktop"
         && (app.client_type != "web" || app.client_secret_hash.is_none())
     {
-        return error_page(StatusCode::BAD_REQUEST, "Unsupported or unconfigured client.");
+        return error_page(
+            StatusCode::BAD_REQUEST,
+            "Unsupported or unconfigured client.",
+        );
     }
     if crate::oidc::consent::approve(&state.db, account.id, app.id, &request.scope)
         .await
