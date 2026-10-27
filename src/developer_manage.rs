@@ -161,13 +161,21 @@ pub async fn replace_redirects(
         .begin()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let row = tx.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        "SELECT id, client_type FROM clients WHERE client_id = ? AND active = 1",
-        [client_id.clone().into()],
-    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.ok_or(StatusCode::NOT_FOUND)?;
-    let internal_id: String = row.try_get("", "id").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let kind: String = row.try_get("", "client_type").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let row = tx
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT id, client_type FROM clients WHERE client_id = ? AND active = 1",
+            [client_id.clone().into()],
+        ))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    let internal_id: String = row
+        .try_get("", "id")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let kind: String = row
+        .try_get("", "client_type")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let kind = ClientType::parse(&kind).ok_or(StatusCode::BAD_REQUEST)?;
     for uri in &payload.redirect_uris {
         validate_redirect_uri(kind, uri).map_err(|_| StatusCode::BAD_REQUEST)?;
