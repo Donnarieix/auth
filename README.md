@@ -222,9 +222,11 @@ operator credential on a trusted host, run:
 cargo run -- admin token rotate operator
 ```
 
-**Important:** This is a read-only developer console prototype, not a final
-administration product. MFA, privileged browser write operations, multiple-admin
-onboarding and a complete operational review remain outstanding. Continue to
-manage registered clients using trusted local CLI access. Do not publicly deploy
+**Important:** The developer console now also permits the current administrator
+to register new applications through `/developer/new-client`; registrations
+and their audit events are committed atomically. Other privileged lifecycle
+operations (editing callback allowlists, deactivation and confidential secret
+rotation) still require the trusted local CLI. MFA, multiple-admin onboarding,
+independent review and a complete operational security model remain outstanding. Do not publicly deploy
 until the missing security and operational features are implemented and
 independently reviewed.
