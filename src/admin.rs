@@ -1,6 +1,7 @@
 //! Administrative CLI only. No remote client registration or developer API.
 use sea_orm::{
     ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, ModelTrait, Statement,
+    TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -64,11 +65,48 @@ async fn bootstrap_administrator(
     Ok(())
 }
 
+/// Credential recovery/rotation requires trusted local database access.
+async fn rotate_administrator_token(
+    db: &DatabaseConnection,
+    username: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (token, _) = generate_token();
+    let digest = Sha256::digest(token.as_bytes()).to_vec();
+    let tx = db.begin().await?;
+    let updated = tx
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE developer_administrators SET token_hash = ? WHERE username = ? AND active = 1",
+            [digest.into(), username.to_owned().into()],
+        ))
+        .await?;
+    if updated.rows_affected() != 1 {
+        return Err("Unknown or disabled administrator".into());
+    }
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_admin_events(id, administrator_id, event_type, created_at) SELECT ?, id, 'credential_rotated', ? FROM developer_administrators WHERE username = ?",
+        [
+            Uuid::new_v4().to_string().into(),
+            chrono::Utc::now().to_rfc3339().into(),
+            username.to_owned().into(),
+        ],
+    )).await?;
+    tx.commit().await?;
+    println!("New administrator token (previous token revoked; store this once): {token}");
+    Ok(())
+}
+
 pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let db = db().await?;
     match args {
         [command, action, username] if command == "admin" && action == "bootstrap" => {
             bootstrap_administrator(&db, username).await?;
+        }
+        [command, action, operation, username]
+            if command == "admin" && action == "token" && operation == "rotate" =>
+        {
+            rotate_administrator_token(&db, username).await?;
         }
         [command, action, kind, name, redirects @ ..] if command == "client" && action == "add" => {
             let kind = ClientType::parse(kind).ok_or("Type must be web or desktop")?;
@@ -96,7 +134,54 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id> | admin bootstrap <username>".into()),
+        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id> | admin bootstrap <username> | admin token rotate <username>".into()),
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sha2::{Digest, Sha256};
+    use uuid::Uuid;
+
+    use super::rotate_administrator_token;
+    use crate::schema;
+
+    #[tokio::test]
+    async fn rotation_changes_credential_and_writes_audit_event() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        schema::apply(&db).await.unwrap();
+        let previous = Sha256::digest(b"previous-secret").to_vec();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO developer_administrators(id, username, token_hash, created_at, active) VALUES (?, ?, ?, ?, 1)",
+            [
+                Uuid::new_v4().to_string().into(),
+                "operator".to_owned().into(),
+                previous.clone().into(),
+                chrono::Utc::now().to_rfc3339().into(),
+            ],
+        )).await.unwrap();
+        rotate_administrator_token(&db, "operator").await.unwrap();
+        let row = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT token_hash FROM developer_administrators WHERE username = 'operator'",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
+        let new_hash: Vec<u8> = row.try_get("", "token_hash").unwrap();
+        assert_ne!(previous, new_hash);
+        let event = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT id FROM developer_admin_events WHERE event_type = 'credential_rotated'",
+            ))
+            .await
+            .unwrap();
+        assert!(event.is_some());
+        assert!(rotate_administrator_token(&db, "unknown").await.is_err());
+    }
 }
