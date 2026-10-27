@@ -36,6 +36,7 @@ mod schema;
 mod security;
 mod services;
 mod state;
+mod user_consents;
 
 #[cfg(test)]
 mod developer_session_tests;
@@ -52,10 +53,16 @@ fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/me", get(me))
         .route("/logout", post(logout))
+        .route("/account/consents", get(user_consents::list))
+        .route(
+            "/account/consents/{client_id}/revoke",
+            post(user_consents::revoke),
+        )
         .route_layer(axum_middleware::from_fn_with_state(state.clone(), auth));
 
     let mut app = Router::new()
         .route("/health", get(health))
+        .route("/account/permissions", get(user_consents::page))
         .route("/account", get(account_ui::page))
         .route(
             "/developer/clients",
