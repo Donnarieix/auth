@@ -3,8 +3,8 @@
 use crate::services::session::generate_token;
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, TransactionTrait, ConnectionTrait, DbBackend, Statement,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, DbErr,
+    EntityTrait, ModelTrait, QueryFilter, Statement, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
