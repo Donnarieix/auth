@@ -4,6 +4,16 @@ This setup is for a single developer workstation, not a public identity service.
 
 ## Start
 
+On Windows PowerShell, from the repository root:
+
+```powershell
+.\\scripts\\local.ps1 -Bootstrap
+.\\scripts\\local.ps1
+```
+
+The bootstrap is needed only once for a fresh database. On Linux/macOS,
+use the manual commands below.
+
 1. Install a current stable Rust toolchain.
 2. Make sure port 3000 is not exposed beyond the loopback interface.
 3. Leave `AUTH_PUBLIC_ORIGIN` unset, or explicitly set it to `http://127.0.0.1:3000`.
