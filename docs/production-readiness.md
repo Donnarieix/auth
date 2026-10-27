@@ -1,41 +1,53 @@
-# Donnarieix Auth — production and OIDC acceptance gates
+# Donnarieix Auth — release acceptance gates
 
-**Current status: NOT production-ready.** No real credentials or personal data should be loaded into a public deployment.
+**Local-development candidate only. NOT production-ready.** No real user
+credentials or personal identity data should be loaded into a public instance.
 
-## 1. Confidential web clients (not implemented)
+## Implemented in the repository
 
-- [ ] Add an independent confidential-client credential model (hashed client secrets, creation/rotation/revocation, never returned except at creation).
-- [ ] Require client authentication at `POST /token` for every confidential web client. Never allow `token_endpoint_auth_method=none` for those clients.
-- [ ] Keep public native/desktop clients on Authorization Code + PKCE S256.
-- [ ] Use exact registered callback comparison and forbid implicit/hybrid grants; test client mixups and replay.
-- [ ] Only advertise methods in OIDC Discovery that are genuinely supported.
+- [x] Authorization Code + S256 PKCE for public native clients.
+- [x] Confidential web clients with hashed, rotatable secrets and HTTP Basic
+  client authentication at the token endpoint.
+- [x] Strict registered redirect matching; one-use short-lived codes and
+  client/user/session/consent checks before redemption.
+- [x] RS256 identity tokens, public JWKS, discovery, UserInfo and JWT tests.
+- [x] Separate developer administrator identity, one-time bootstrap, browser
+  session and logout, isolated from end-user SSO.
+- [x] Developer client creation, listing, deactivation, callback allowlist
+  management and one-time secret rotation; audited privileged mutations.
+- [x] CSRF origin checks, strict developer cookies, rate-limit hooks,
+  explicit browser response security headers and a loopback-only listener.
+- [x] Self-service browser UI for registration, email verification and password
+  recovery; account tokens are hashed and single-use.
+- [x] Explicit localhost development OIDC origin, persistent local signing key
+  and local mail outbox for offline trials.
+- [x] CI configured to run Rust formatting, strict Clippy, tests and lockfile
+  reproducibility checks.
 
-## 2. Separate developer administration (not implemented)
+## Unfinished security and production gates
 
-- [ ] Administrator credentials, roles and sessions must be distinct from end-user identities.
-- [ ] Bootstrap first administrator through a local, access-controlled process with no default password.
-- [ ] Implement administrator-only client lifecycle: add/list/update/disable, redirect allowlist, secret rotation and audit trail.
-- [ ] Require CSRF protection, reauthentication for sensitive changes, rate limits and conservative failure handling.
-- [ ] Test that ordinary users cannot reach developer endpoints or obtain administrative sessions.
+- [ ] Verify a clean local build and complete live browser journey on a real
+  installation, including both desktop and confidential web clients.
+- [ ] Perform independent client interoperability and adversarial testing,
+  beyond in-process integration tests.
+- [ ] Replace inline JavaScript with external or nonce-protected scripts and
+  deploy a strict CSP before public exposure.
+- [ ] Add administrator MFA and multi-admin lifecycle; define administrative
+  recovery and security-event monitoring policy.
+- [ ] Harden operational throttling for distributed/public deployments,
+  incident response, observability, backup/restore and signing-key rollover.
+- [ ] Configure a real trusted HTTPS domain, TLS termination, firewall and
+  secure browser cookie policy; verify from an external machine.
+- [ ] Provision a real mail provider and sender-domain authentication,
+  durable email retries and delivery monitoring.
+- [ ] Perform security review of secrets, supply chain, authorization,
+  session fixation, CSRF, input handling, logging and audit integrity.
+- [ ] Publish a signed-off release report before exposing production accounts.
 
-## 3. Operations and security (not validated)
+## Status and workflow
 
-- [ ] TLS termination/reverse proxy with trusted forwarded-header handling, forced HTTPS and cookie checks in browsers.
-- [ ] SMTP sender/domain configuration (SPF, DKIM, DMARC), delivery verification, retry queue, and verified-email onboarding.
-- [ ] Production session/token revocation strategy, abuse mitigation shared across instances, monitoring and backups.
-- [ ] CSP without inline JavaScript, reviewed logging and secret redaction, key rotation drill, secure key permissions.
-- [ ] Software supply-chain review and independent adversarial security review.
-
-## 4. Protocol verification and integration (not validated)
-
-- [ ] Run `cargo fmt --all -- --check`, strict Clippy and all tests on every PR.
-- [ ] Run a **separate** OIDC client end to end (prefer the independent auth-test-client repository): browser login, approval, callback and token exchange.
-- [ ] Verify JWKS signature, issuer, audience, nonce, expiration, scope, `sub`, and state at the **client**.
-- [ ] Assert code replay, wrong client, incorrect redirect, invalid verifier, CSRF and token substitution all fail.
-- [ ] Test disabled accounts/clients, password reset, consent revocation, logout and key rollover.
-- [ ] Verify both native public and authenticated confidential web clients against issuer metadata.
-- [ ] Publish a concrete report with CI run IDs, integration environment and failures before closing #12.
-
-## Current implementation note
-
-The existing native-client flow was merged through PR #25. PR #26 adds initial browser response headers only; it does **not** complete any of the unchecked acceptance gates. No live HTTPS or SMTP validation has been performed.
+Keep the project on loopback for the planned local test phase. The full
+development candidate is consolidated in PR #34. Do not close issue #12,
+claim OIDC certification, or activate a public endpoint merely because CI is
+green. The independent test client belongs to the next stage once the local
+provider is validated.
