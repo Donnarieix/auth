@@ -1,12 +1,12 @@
 //! Public-client Authorization Code + PKCE token exchange and UserInfo.
 //! Bearer access tokens are opaque, short-lived and hashed at rest.
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 use axum::{
     Form, Json,
     extract::State,
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
@@ -84,7 +84,11 @@ fn valid_web_client_secret(headers: &HeaderMap, id: &str, hash: &[u8]) -> bool {
         return false;
     }
     let digest = Sha256::digest(password.as_bytes());
-    digest.iter().zip(hash).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+    digest
+        .iter()
+        .zip(hash)
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+        == 0
 }
 
 /// Public clients must never present client credentials; confidential web
@@ -128,9 +132,10 @@ pub async fn token(
     };
     let client_authenticated = match app.client_type.as_str() {
         "desktop" => !headers.contains_key(header::AUTHORIZATION),
-        "web" => app.client_secret_hash.as_deref().is_some_and(|hash| {
-            valid_web_client_secret(&headers, &form.client_id, hash)
-        }),
+        "web" => app
+            .client_secret_hash
+            .as_deref()
+            .is_some_and(|hash| valid_web_client_secret(&headers, &form.client_id, hash)),
         _ => false,
     };
     if !client_authenticated {
@@ -140,7 +145,9 @@ pub async fn token(
                 header::WWW_AUTHENTICATE,
                 "Basic realm=\"Donnarieix Auth token\"",
             )],
-            Json(OAuthError { error: "invalid_client" }),
+            Json(OAuthError {
+                error: "invalid_client",
+            }),
         )
             .into_response();
     }
