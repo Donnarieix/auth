@@ -7,11 +7,11 @@ document.getElementById('load').addEventListener('click',async()=>{
  if(!r.ok){status.textContent='Developer login required.';return;}
  const client=(await r.json()).find(v=>v.client_id===id.value.trim());
  if(!client){status.textContent='Client not found.';return;}
- document.getElementById('redirects').value=client.redirect_uris.join('\\n');
+ document.getElementById('redirects').value=client.redirect_uris.join('\n');
  status.textContent=client.name+' — '+client.client_type+' — '+(client.active?'active':'disabled');
 });
 document.getElementById('save').addEventListener('click',async()=>{
- const uris=document.getElementById('redirects').value.split('\\n').map(v=>v.trim()).filter(Boolean);
+ const uris=document.getElementById('redirects').value.split('\n').map(v=>v.trim()).filter(Boolean);
  const r=await fetch(endpoint('/redirects'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({redirect_uris:uris})});
  status.textContent=r.ok?'Redirect URIs saved.':'Redirect update refused.';
 });
