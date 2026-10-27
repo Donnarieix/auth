@@ -1,7 +1,9 @@
 //! Authenticated developer client registration, independent of end-user SSO.
-use axum::{Json, extract::State, http::StatusCode, response::Html};
+use axum::{Json, extract::{Path, State}, http::StatusCode, response::Html};
 use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
+use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
+use uuid::Uuid;
 
 use crate::{
     developer_session::authenticated_cookie,
@@ -64,4 +66,50 @@ document.getElementById('client').addEventListener('submit', async e => {
 });
 </script></body></html>"#,
     )
+}
+
+#[derive(Serialize)]
+pub struct DisabledClient {
+    disabled: bool,
+}
+
+/// Administrative deactivation is audited in the same transaction.
+/// Disabling a client prevents authorization, token redemption and userinfo
+/// because those endpoints check active client status.
+pub async fn disable(
+    State(state): State<AppState>,
+    Path(client_id): Path<String>,
+    jar: CookieJar,
+) -> Result<Json<DisabledClient>, StatusCode> {
+    let actor = authenticated_cookie(&state, &jar)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    if !state
+        .abuse
+        .allow("developer_client_disable", &actor.to_string(), 30, 10)
+        .await
+    {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+    let tx = state.db.begin().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let updated = tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE clients SET active = 0 WHERE client_id = ? AND active = 1",
+        [client_id.clone().into()],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if updated.rows_affected() != 1 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_admin_events(id, administrator_id, event_type, created_at) VALUES (?, ?, ?, ?)",
+        [
+            Uuid::new_v4().to_string().into(),
+            actor.to_string().into(),
+            format!("client_disabled:{client_id}").into(),
+            chrono::Utc::now().to_rfc3339().into(),
+        ],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(DisabledClient { disabled: true }))
 }
