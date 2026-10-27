@@ -3,9 +3,9 @@
 //! supplied by a request body or query parameter.
 use axum::{
     Extension, Json,
-    response::Html,
     extract::{Path, State},
     http::StatusCode,
+    response::Html,
 };
 use chrono::Utc;
 use sea_orm::{EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr};
