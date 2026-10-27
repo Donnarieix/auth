@@ -72,3 +72,42 @@ pub async fn list_clients(
             .collect(),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::{body::Body, http::{Request, StatusCode, header}};
+    use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+    use sha2::{Digest, Sha256};
+    use tower::ServiceExt;
+    use uuid::Uuid;
+
+    use crate::{router, schema, state::AppState};
+
+    #[tokio::test]
+    async fn developer_api_rejects_ordinary_users_and_accepts_only_admin_credentials() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        schema::apply(&db).await.unwrap();
+        let token = "Q".repeat(43);
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO developer_administrators (id, username, token_hash, created_at, active) VALUES (?, ?, ?, ?, 1)",
+            [
+                Uuid::new_v4().to_string().into(),
+                "operator".to_owned().into(),
+                Sha256::digest(token.as_bytes()).to_vec().into(),
+                chrono::Utc::now().to_rfc3339().into(),
+            ],
+        ))
+        .await.unwrap();
+        let app = router(AppState::with_db(db));
+        let unauthorized = app.clone().oneshot(Request::builder()
+            .uri("/developer/clients")
+            .body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(unauthorized.status(), StatusCode::UNAUTHORIZED);
+        let ok = app.oneshot(Request::builder()
+            .uri("/developer/clients")
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(ok.status(), StatusCode::OK);
+    }
+}
