@@ -1,5 +1,6 @@
 //! Separate developer administration identity. No end-user session or cookie
 //! grants access to developer endpoints. Tokens are created offline.
+use axum_extra::extract::CookieJar;
 use axum::{
     Json,
     extract::State,
@@ -53,8 +54,13 @@ pub struct DeveloperClient {
 pub async fn list_clients(
     State(state): State<AppState>,
     headers: HeaderMap,
+    jar: CookieJar,
 ) -> Result<Json<Vec<DeveloperClient>>, StatusCode> {
-    authenticated_administrator(&state, &headers).await?;
+    if authenticated_administrator(&state, &headers).await.is_err()
+        && crate::developer_session::authenticated_cookie(&state, &jar).await.is_none()
+    {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
     let clients = client::Entity::find()
         .all(&state.db)
         .await
