@@ -42,6 +42,7 @@ impl Mailer {
         }
         let host = match std::env::var("SMTP_HOST") {
             Ok(host) if !host.is_empty() => host,
+            _ if !secure => return Self::LocalOutbox(PathBuf::from("data/outbox")),
             _ => return Self::Disabled,
         };
         let user =
