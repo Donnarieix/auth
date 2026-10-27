@@ -165,38 +165,69 @@ mod tests {
 
         let router = router(AppState::with_db(db.clone()));
         let cookie = format!("auth_session={token}");
-        let listed = router.clone().oneshot(
-            Request::builder().uri("/account/consents")
-                .header(header::COOKIE, &cookie)
-                .body(Body::empty()).unwrap()
-        ).await.unwrap();
+        let listed = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/account/consents")
+                    .header(header::COOKIE, &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(listed.status(), StatusCode::OK);
-        let blocked = router.clone().oneshot(
-            Request::builder().method(Method::POST)
-                .uri(format!("/account/consents/{client_id}/revoke"))
-                .header(header::COOKIE, &cookie)
-                .header(header::ORIGIN, "http://evil.example")
-                .body(Body::empty()).unwrap()
-        ).await.unwrap();
+        let blocked = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/account/consents/{client_id}/revoke"))
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, "http://evil.example")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(blocked.status(), StatusCode::FORBIDDEN);
-        let revoked = router.clone().oneshot(
-            Request::builder().method(Method::POST)
-                .uri(format!("/account/consents/{client_id}/revoke"))
-                .header(header::COOKIE, &cookie)
-                .header(header::ORIGIN, "http://127.0.0.1:3000")
-                .body(Body::empty()).unwrap()
-        ).await.unwrap();
+        let revoked = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/account/consents/{client_id}/revoke"))
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, "http://127.0.0.1:3000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(revoked.status(), StatusCode::NO_CONTENT);
-        let stored = oidc_consent::Entity::find().one(&db).await.unwrap().unwrap();
+        let stored = oidc_consent::Entity::find()
+            .one(&db)
+            .await
+            .unwrap()
+            .unwrap();
         assert!(stored.revoked_at.is_some());
-        assert!(!consent::approved(&db, uid, app_row.id, "openid").await.unwrap());
-        let second = router.oneshot(
-            Request::builder().method(Method::POST)
-                .uri(format!("/account/consents/{client_id}/revoke"))
-                .header(header::COOKIE, &cookie)
-                .header(header::ORIGIN, "http://127.0.0.1:3000")
-                .body(Body::empty()).unwrap()
-        ).await.unwrap();
+        assert!(
+            !consent::approved(&db, uid, app_row.id, "openid")
+                .await
+                .unwrap()
+        );
+        let second = router
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri(format!("/account/consents/{client_id}/revoke"))
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, "http://127.0.0.1:3000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(second.status(), StatusCode::NOT_FOUND);
     }
 }
