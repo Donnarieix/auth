@@ -113,7 +113,9 @@ pub async fn authorization_page(
     else {
         return error_page(StatusCode::BAD_REQUEST, "Unregistered client.");
     };
-    if app.client_type != "desktop" && (app.client_type != "web" || app.client_secret_hash.is_none()) {
+    if app.client_type != "desktop"
+        && (app.client_type != "web" || app.client_secret_hash.is_none())
+    {
         return error_page(
             StatusCode::BAD_REQUEST,
             "Unsupported or unconfigured client.",
