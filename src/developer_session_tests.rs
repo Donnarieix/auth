@@ -116,6 +116,47 @@ async fn developer_browser_session_is_isolated_and_revocable() {
         .await
         .unwrap();
     assert!(audit.is_some());
+    let client_row = inspect_db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT client_id FROM clients WHERE name = 'Desktop Test'",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let client_id: String = client_row.try_get("", "client_id").unwrap();
+    let unauthorized_disable = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{client_id}/disable"),
+        String::new(),
+        &[("origin", "http://127.0.0.1:3000")],
+    )
+    .await;
+    assert_eq!(unauthorized_disable.status(), StatusCode::UNAUTHORIZED);
+    let disabled = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{client_id}/disable"),
+        String::new(),
+        &[("origin", "http://127.0.0.1:3000"), ("cookie", session)],
+    )
+    .await;
+    assert_eq!(disabled.status(), StatusCode::OK);
+    let disabled_again = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{client_id}/disable"),
+        String::new(),
+        &[("origin", "http://127.0.0.1:3000"), ("cookie", session)],
+    )
+    .await;
+    assert_eq!(disabled_again.status(), StatusCode::NOT_FOUND);
+    let disable_audit = inspect_db.query_one_raw(Statement::from_string(
+        DbBackend::Sqlite,
+        "SELECT id FROM developer_admin_events WHERE event_type LIKE 'client_disabled:%'",
+    )).await.unwrap();
+    assert!(disable_audit.is_some());
     let logout = call(
         &app,
         Method::POST,
