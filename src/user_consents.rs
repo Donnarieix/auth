@@ -133,7 +133,10 @@ mod tests {
             active: Set(true),
             created_at: Set(now),
             updated_at: Set(now),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         let (token, hash) = generate_token();
         session::ActiveModel {
             id: Set(Uuid::new_v4()),
