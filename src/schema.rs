@@ -138,6 +138,22 @@ const ACCESS_TOKEN_SCHEMA: &[&str] = &[
 const CONFIDENTIAL_WEB_SCHEMA: &[&str] =
     &["ALTER TABLE clients ADD COLUMN client_secret_hash BLOB"];
 
+const DEVELOPER_IDENTITY_SCHEMA: &[&str] = &[
+    r#"CREATE TABLE developer_administrators (
+        id TEXT PRIMARY KEY NOT NULL,
+        username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        token_hash BLOB NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1))
+    )"#,
+    r#"CREATE TABLE developer_admin_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        administrator_id TEXT NOT NULL REFERENCES developer_administrators(id),
+        event_type TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )"#,
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -152,7 +168,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 8 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 9 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -298,6 +314,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (8)",
+        ))
+        .await?;
+    }
+
+    let has_v9 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 9",
+        ))
+        .await?
+        .is_some();
+    if !has_v9 {
+        for sql in DEVELOPER_IDENTITY_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (9)",
         ))
         .await?;
     }
