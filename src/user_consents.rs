@@ -3,6 +3,7 @@
 //! supplied by a request body or query parameter.
 use axum::{
     Extension, Json,
+    response::Html,
     extract::{Path, State},
     http::StatusCode,
 };
@@ -93,6 +94,39 @@ pub async fn revoke(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Browser view of the current user's granted applications; the endpoints,
+/// not this static page, authenticate the user and enforce CSRF.
+pub async fn page() -> Html<&'static str> {
+    Html(r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Connected applications</title></head><body><main><h1>Connected applications</h1><p>Applications listed here can access the scopes you approved. Revoking an application immediately invalidates its current access tokens.</p><ul id="grants"></ul><p id="status" role="status"></p></main><script>
+const list=document.getElementById('grants');
+const status=document.getElementById('status');
+async function load(){
+ list.replaceChildren();
+ const response=await fetch('/account/consents',{credentials:'same-origin'});
+ if(!response.ok){status.textContent='Sign in to view your applications.';return;}
+ const grants=await response.json();
+ if(!grants.length){status.textContent='No active application permissions.';return;}
+ status.textContent='';
+ for(const grant of grants){
+  const item=document.createElement('li');
+  const label=document.createElement('span');
+  label.textContent=grant.name+' — '+grant.scope;
+  const button=document.createElement('button');
+  button.textContent='Revoke';
+  button.addEventListener('click',async()=>{
+   if(!confirm('Remove access for '+grant.name+'?'))return;
+   button.disabled=true;
+   const result=await fetch('/account/consents/'+encodeURIComponent(grant.client_id)+'/revoke',{method:'POST',credentials:'same-origin'});
+   if(!result.ok){status.textContent='Unable to revoke permission.';button.disabled=false;return;}
+   await load();
+  });
+  item.append(label,' ',button);list.append(item);
+ }
+}
+load();
+</script></body></html>"#)
 }
 
 #[cfg(test)]
