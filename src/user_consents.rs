@@ -127,7 +127,8 @@ async function load(){
  }
 }
 load();
-</script></body></html>"#)
+</script></body></html>"#,
+    )
 }
 
 #[cfg(test)]
