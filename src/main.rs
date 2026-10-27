@@ -19,6 +19,7 @@ use crate::{
 };
 
 mod admin;
+mod account_ui;
 mod developer;
 mod developer_manage;
 mod developer_session;
@@ -54,6 +55,7 @@ fn router(state: AppState) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
+        .route("/account", get(account_ui::page))
         .route(
             "/developer/clients",
             get(developer::list_clients).post(developer_manage::create),
