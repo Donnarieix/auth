@@ -294,3 +294,28 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> impl
         }),
     ))
 }
+
+#[cfg(test)]
+mod confidential_client_tests {
+    use super::valid_web_client_secret;
+    use axum::http::{HeaderMap, header};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use sha2::{Digest, Sha256};
+
+    #[test]
+    fn basic_client_authentication_requires_correct_id_and_secret() {
+        let id = "test-client";
+        let secret = "x".repeat(43);
+        let digest = Sha256::digest(secret.as_bytes()).to_vec();
+        let mut headers = HeaderMap::new();
+        let encoded = STANDARD.encode(format!("{id}:{secret}"));
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Basic {encoded}").parse().unwrap(),
+        );
+        assert!(valid_web_client_secret(&headers, id, &digest));
+        assert!(!valid_web_client_secret(&headers, "other-client", &digest));
+        assert!(!valid_web_client_secret(&headers, id, &Sha256::digest(b"wrong").to_vec()));
+        assert!(!valid_web_client_secret(&HeaderMap::new(), id, &digest));
+    }
+}
