@@ -21,6 +21,7 @@ use crate::{
 mod account_ui;
 mod admin;
 mod developer;
+mod developer_client_page;
 mod developer_manage;
 mod developer_session;
 mod entities;
@@ -61,6 +62,7 @@ fn router(state: AppState) -> Router {
             get(developer::list_clients).post(developer_manage::create),
         )
         .route("/developer/new-client", get(developer_manage::create_page))
+        .route("/developer/manage-client", get(developer_client_page::page))
         .route(
             "/developer/clients/{id}/secret",
             post(developer_manage::rotate_secret),
