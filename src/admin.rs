@@ -1,6 +1,7 @@
 //! Administrative CLI only. No remote client registration or developer API.
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, ModelTrait, Statement, TransactionTrait,
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, ModelTrait, Statement,
+    TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -72,11 +73,13 @@ async fn rotate_administrator_token(
     let (token, _) = generate_token();
     let digest = Sha256::digest(token.as_bytes()).to_vec();
     let tx = db.begin().await?;
-    let updated = tx.execute_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        "UPDATE developer_administrators SET token_hash = ? WHERE username = ? AND active = 1",
-        [digest.into(), username.to_owned().into()],
-    )).await?;
+    let updated = tx
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE developer_administrators SET token_hash = ? WHERE username = ? AND active = 1",
+            [digest.into(), username.to_owned().into()],
+        ))
+        .await?;
     if updated.rows_affected() != 1 {
         return Err("Unknown or disabled administrator".into());
     }
@@ -161,16 +164,23 @@ mod tests {
             ],
         )).await.unwrap();
         rotate_administrator_token(&db, "operator").await.unwrap();
-        let row = db.query_one_raw(Statement::from_string(
-            DbBackend::Sqlite,
-            "SELECT token_hash FROM developer_administrators WHERE username = 'operator'",
-        )).await.unwrap().unwrap();
+        let row = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT token_hash FROM developer_administrators WHERE username = 'operator'",
+            ))
+            .await
+            .unwrap()
+            .unwrap();
         let new_hash: Vec<u8> = row.try_get("", "token_hash").unwrap();
         assert_ne!(previous, new_hash);
-        let event = db.query_one_raw(Statement::from_string(
-            DbBackend::Sqlite,
-            "SELECT id FROM developer_admin_events WHERE event_type = 'credential_rotated'",
-        )).await.unwrap();
+        let event = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT id FROM developer_admin_events WHERE event_type = 'credential_rotated'",
+            ))
+            .await
+            .unwrap();
         assert!(event.is_some());
         assert!(rotate_administrator_token(&db, "unknown").await.is_err());
     }
