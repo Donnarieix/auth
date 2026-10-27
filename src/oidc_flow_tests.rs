@@ -147,7 +147,7 @@ fn token_form_for(client: &str, redirect: &str, code: &str, verifier: &str) -> S
     url::form_urlencoded::Serializer::new(String::new())
         .append_pair("grant_type", "authorization_code")
         .append_pair("client_id", client)
-        .append_pair("redirect_uri", REDIRECT)
+        .append_pair("redirect_uri", redirect)
         .append_pair("code", code)
         .append_pair("code_verifier", verifier)
         .finish()
