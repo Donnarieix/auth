@@ -54,14 +54,9 @@ async fn request(
 async fn fixture_for(kind: ClientType, redirect: &str) -> (Router, String, String, Option<String>) {
     let db = Database::connect("sqlite::memory:").await.unwrap();
     schema::apply(&db).await.unwrap();
-    let public_client = register_client(
-        &db,
-        "Test Client",
-        kind,
-        &[redirect.to_owned()],
-    )
-    .await
-    .unwrap();
+    let public_client = register_client(&db, "Test Client", kind, &[redirect.to_owned()])
+        .await
+        .unwrap();
 
     let secret = if kind == ClientType::Web {
         Some(rotate_web_client_secret(&db, &public_client).await.unwrap())
@@ -185,7 +180,12 @@ async fn confidential_web_client_requires_secret_and_pkce() {
     let location = approval.headers()[header::LOCATION].to_str().unwrap();
     let callback = url::Url::parse(location).unwrap();
     assert_eq!(callback.host_str(), Some("web.example.test"));
-    let code = callback.query_pairs().find(|(k, _)| k == "code").unwrap().1.to_string();
+    let code = callback
+        .query_pairs()
+        .find(|(k, _)| k == "code")
+        .unwrap()
+        .1
+        .to_string();
     let payload = token_form_for(&client, redirect, &code, VERIFIER);
     let no_credentials = request(
         &app,
@@ -193,7 +193,8 @@ async fn confidential_web_client_requires_secret_and_pkce() {
         "/token",
         payload.clone(),
         &[("content-type", "application/x-www-form-urlencoded")],
-    ).await;
+    )
+    .await;
     assert_eq!(no_credentials.status(), StatusCode::UNAUTHORIZED);
     let incorrect = STANDARD.encode(format!("{client}:{}", "z".repeat(43)));
     let rejected = request(
@@ -205,7 +206,8 @@ async fn confidential_web_client_requires_secret_and_pkce() {
             ("content-type", "application/x-www-form-urlencoded"),
             ("authorization", &format!("Basic {incorrect}")),
         ],
-    ).await;
+    )
+    .await;
     assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
     let basic = STANDARD.encode(format!("{client}:{}", secret.unwrap()));
     let success = request(
@@ -217,7 +219,8 @@ async fn confidential_web_client_requires_secret_and_pkce() {
             ("content-type", "application/x-www-form-urlencoded"),
             ("authorization", &format!("Basic {basic}")),
         ],
-    ).await;
+    )
+    .await;
     assert_eq!(success.status(), StatusCode::OK);
     let replay = request(
         &app,
@@ -228,7 +231,8 @@ async fn confidential_web_client_requires_secret_and_pkce() {
             ("content-type", "application/x-www-form-urlencoded"),
             ("authorization", &format!("Basic {basic}")),
         ],
-    ).await;
+    )
+    .await;
     assert_eq!(replay.status(), StatusCode::BAD_REQUEST);
 }
 
