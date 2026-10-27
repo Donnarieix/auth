@@ -6,12 +6,12 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
 };
 use axum_extra::extract::CookieJar;
-use sea_orm::{ConnectionTrait, DbBackend, EntityTrait, Statement};
+use sea_orm::{ConnectionTrait, DbBackend, EntityTrait, ModelTrait, Statement};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::{entities::client, state::AppState};
+use crate::{entities::{client, client_redirect_uri}, state::AppState};
 
 async fn authenticated_administrator(
     state: &AppState,
@@ -47,6 +47,7 @@ pub struct DeveloperClient {
     client_type: String,
     active: bool,
     confidential: bool,
+    redirect_uris: Vec<String>,
 }
 
 /// Read-only first slice of the developer API: no secrets or credentials
@@ -67,18 +68,23 @@ pub async fn list_clients(
         .all(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(
-        clients
-            .into_iter()
-            .map(|app| DeveloperClient {
-                client_id: app.client_id,
-                name: app.name,
-                client_type: app.client_type,
-                active: app.active,
-                confidential: app.client_secret_hash.is_some(),
-            })
-            .collect(),
-    ))
+    let mut result = Vec::with_capacity(clients.len());
+    for app in clients {
+        let redirects = app
+            .find_related(client_redirect_uri::Entity)
+            .all(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        result.push(DeveloperClient {
+            client_id: app.client_id,
+            name: app.name,
+            client_type: app.client_type,
+            active: app.active,
+            confidential: app.client_secret_hash.is_some(),
+            redirect_uris: redirects.into_iter().map(|r| r.redirect_uri).collect(),
+        });
+    }
+    Ok(Json(result))
 }
 
 #[cfg(test)]
