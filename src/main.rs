@@ -14,7 +14,7 @@ use crate::{
     oidc::token::{token, userinfo},
     routes::account::{confirm_reset, confirm_verification, request_reset, request_verification},
     routes::{health::health, login::login, logout::logout, me::me, register::register},
-    security::require_same_origin,
+    security::{require_same_origin, security_response_headers},
     state::AppState,
 };
 
@@ -72,6 +72,10 @@ fn router(state: AppState) -> Router {
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             require_same_origin,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            security_response_headers,
         ))
         .with_state(state)
 }
