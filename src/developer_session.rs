@@ -142,48 +142,6 @@ pub async fn logout(
 
 pub async fn page() -> Html<&'static str> {
     Html(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Developer console</title></head><body><main><h1>Donnarieix Auth — Developer console</h1><form id="signin"><label>Administrator <input name="username" required autocomplete="username"></label><label>Recovery credential <input type="password" name="token" required autocomplete="current-password"></label><button>Sign in</button></form><p id="status" role="alert"></p><section><h2>Registered applications</h2><ul id="apps"></ul></section><p><a href="/developer/new-client">Register application</a></p><button id="signout">Sign out</button></main><script>
-const status = document.getElementById('status');
-async function refresh() {
- const r = await fetch('/developer/clients', {credentials:'same-origin'});
- const list = document.getElementById('apps');
- list.replaceChildren();
- if (!r.ok) { status.textContent='Sign in with your developer credentials.'; return; }
- status.textContent='Developer session active.';
- for (const app of await r.json()) {
-  const li=document.createElement('li');
-  li.textContent=app.name+' — '+app.client_type+' — '+(app.active?'active':'disabled');
-  if (app.active) {
-   const disable=document.createElement('button');
-   disable.textContent='Disable';
-   disable.addEventListener('click', async () => {
-    if (!confirm('Disable '+app.name+'? Existing authorization grants will become unusable.')) return;
-    const res=await fetch('/developer/clients/'+encodeURIComponent(app.client_id)+'/disable',{method:'POST',credentials:'same-origin'});
-    if (!res.ok) {status.textContent='Could not disable client.';return;}
-    await refresh();
-   });
-   li.append(' ',disable);
-  }
-  const manage=document.createElement('a');
-  manage.href='/developer/manage-client?client_id='+encodeURIComponent(app.client_id);
-  manage.textContent='Manage';
-  li.append(' ',manage);
-  list.append(li);
- }
-}
-document.getElementById('signin').addEventListener('submit', async e => {
- e.preventDefault();
- const data=new FormData(e.target);
- const r=await fetch('/developer/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:data.get('username'),token:data.get('token')})});
- e.target.reset();
- if (!r.ok) { status.textContent='Authentication failed.'; return; }
- await refresh();
-});
-document.getElementById('signout').addEventListener('click', async () => {
- await fetch('/developer/logout',{method:'POST',credentials:'same-origin'});
- await refresh();
-});
-refresh();
-</script></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Developer console</title></head><body><main><h1>Donnarieix Auth — Developer console</h1><form id="signin"><label>Administrator <input name="username" required autocomplete="username"></label><label>Recovery credential <input type="password" name="token" required autocomplete="current-password"></label><button>Sign in</button></form><p id="status" role="alert"></p><section><h2>Registered applications</h2><ul id="apps"></ul></section><p><a href="/developer/new-client">Register application</a></p><button id="signout">Sign out</button></main><script defer src='/assets/developer.js'></script></body></html>"#,
     )
 }

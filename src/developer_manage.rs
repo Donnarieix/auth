@@ -62,18 +62,7 @@ pub async fn create(
 
 pub async fn create_page() -> Html<&'static str> {
     Html(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Register client</title></head><body><main><h1>Register OIDC application</h1><p>Only authenticated developer administrators may register clients. Use HTTPS callbacks for web clients; desktop callbacks may use explicitly registered loopback ports.</p><form id="client"><label>Application name <input name="name" maxlength="100" required></label><label>Type <select name="kind"><option value="desktop">Desktop (public PKCE)</option><option value="web">Web (confidential backend)</option></select></label><label>Redirect URIs (one per line) <textarea name="uris" required></textarea></label><button>Create client</button></form><p id="status" role="alert"></p><p><a href="/developer">Developer console</a></p></main><script>
-document.getElementById('client').addEventListener('submit', async e => {
- e.preventDefault();
- const data=new FormData(e.target);
- const payload={name:data.get('name'),client_type:data.get('kind'),redirect_uris:String(data.get('uris')).split('\n').map(v=>v.trim()).filter(Boolean)};
- const result=await fetch('/developer/clients',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
- const status=document.getElementById('status');
- if (!result.ok) {status.textContent='Could not register the application. Check login and callback values.';return;}
- const client=await result.json();
- status.textContent='Created client ID: '+client.client_id+'. Save this ID. Web clients also require a confidential secret from the trusted operator CLI.';
-});
-</script></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Register client</title></head><body><main><h1>Register OIDC application</h1><p>Only authenticated developer administrators may register clients. Use HTTPS callbacks for web clients; desktop callbacks may use explicitly registered loopback ports.</p><form id="client"><label>Application name <input name="name" maxlength="100" required></label><label>Type <select name="kind"><option value="desktop">Desktop (public PKCE)</option><option value="web">Web (confidential backend)</option></select></label><label>Redirect URIs (one per line) <textarea name="uris" required></textarea></label><button>Create client</button></form><p id="status" role="alert"></p><p><a href="/developer">Developer console</a></p></main><script defer src='/assets/register-client.js'></script></body></html>"#,
     )
 }
 

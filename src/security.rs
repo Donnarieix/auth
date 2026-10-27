@@ -86,7 +86,7 @@ impl SecurityConfig {
     }
 }
 
-const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 fn attach_security_headers(response: &mut Response, secure: bool) {
     let headers = response.headers_mut();
@@ -117,8 +117,7 @@ fn attach_security_headers(response: &mut Response, secure: bool) {
 }
 
 /// Apply defense-in-depth browser headers to every response, including errors.
-/// Inline JavaScript is currently used by the sign-in prototype; replace it
-/// with nonce-based scripts before claiming production-grade CSP hardening.
+/// Browser scripts are first-party static assets; inline execution is denied.
 pub async fn security_response_headers(
     State(state): State<AppState>,
     request: Request,
@@ -192,6 +191,12 @@ mod tests {
         assert_eq!(
             response.headers()[header::STRICT_TRANSPORT_SECURITY],
             "max-age=31536000"
+        );
+        assert!(
+            !response.headers()["content-security-policy"]
+                .to_str()
+                .unwrap()
+                .contains("unsafe-inline")
         );
         assert!(
             response.headers()["content-security-policy"]
