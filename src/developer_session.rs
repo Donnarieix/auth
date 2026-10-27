@@ -153,6 +153,17 @@ async function refresh() {
  for (const app of await r.json()) {
   const li=document.createElement('li');
   li.textContent=app.name+' — '+app.client_type+' — '+(app.active?'active':'disabled');
+  if (app.active) {
+   const disable=document.createElement('button');
+   disable.textContent='Disable';
+   disable.addEventListener('click', async () => {
+    if (!confirm('Disable '+app.name+'? Existing authorization grants will become unusable.')) return;
+    const res=await fetch('/developer/clients/'+encodeURIComponent(app.client_id)+'/disable',{method:'POST',credentials:'same-origin'});
+    if (!res.ok) {status.textContent='Could not disable client.';return;}
+    await refresh();
+   });
+   li.append(' ',disable);
+  }
   list.append(li);
  }
 }
