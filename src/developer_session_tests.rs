@@ -1,6 +1,8 @@
 use axum::{
+    Router,
     body::Body,
     http::{Method, Request, StatusCode, header},
+    response::Response,
 };
 use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
 use sha2::{Digest, Sha256};
@@ -8,6 +10,23 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 use crate::{router, schema, state::AppState};
+
+async fn call(
+    app: &Router,
+    method: Method,
+    path: &str,
+    body: String,
+    headers: &[(&str, &str)],
+) -> Response {
+    let mut request = Request::builder().method(method).uri(path);
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    app.clone()
+        .oneshot(request.body(Body::from(body)).unwrap())
+        .await
+        .unwrap()
+}
 
 #[tokio::test]
 async fn developer_browser_session_is_isolated_and_revocable() {
@@ -27,51 +46,38 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     .await
     .unwrap();
     let app = router(AppState::with_db(db));
-    let invalid = app.clone().oneshot(
-        Request::builder()
-            .method(Method::POST)
-            .uri("/developer/login")
-            .header(header::ORIGIN, "http://127.0.0.1:3000")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(r#"{"username":"operator","token":"wrong"}"#))
-            .unwrap(),
-    ).await.unwrap();
+    let headers = [
+        ("origin", "http://127.0.0.1:3000"),
+        ("content-type", "application/json"),
+    ];
+    let invalid = call(
+        &app, Method::POST, "/developer/login",
+        r#"{"username":"operator","token":"wrong"}"#.into(), &headers,
+    ).await;
     assert_eq!(invalid.status(), StatusCode::UNAUTHORIZED);
-    let response = app.clone().oneshot(
-        Request::builder()
-            .method(Method::POST)
-            .uri("/developer/login")
-            .header(header::ORIGIN, "http://127.0.0.1:3000")
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(format!(r#"{{"username":"operator","token":"{token}"}}"#)))
-            .unwrap(),
-    ).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let cookie = response.headers()[header::SET_COOKIE].to_str().unwrap();
+    let login = call(
+        &app, Method::POST, "/developer/login",
+        format!(r#"{{"username":"operator","token":"{token}"}}"#),
+        &headers,
+    ).await;
+    assert_eq!(login.status(), StatusCode::OK);
+    let cookie = login.headers()[header::SET_COOKIE].to_str().unwrap();
     assert!(cookie.contains("HttpOnly"));
     assert!(cookie.contains("SameSite=Strict"));
     let session = cookie.split(';').next().unwrap();
-    let profile = app.clone().oneshot(
-        Request::builder()
-            .uri("/developer/clients")
-            .header(header::COOKIE, session)
-            .body(Body::empty()).unwrap(),
-    ).await.unwrap();
+    let profile = call(
+        &app, Method::GET, "/developer/clients", String::new(),
+        &[("cookie", session)],
+    ).await;
     assert_eq!(profile.status(), StatusCode::OK);
-    let logout = app.clone().oneshot(
-        Request::builder()
-            .method(Method::POST)
-            .uri("/developer/logout")
-            .header(header::ORIGIN, "http://127.0.0.1:3000")
-            .header(header::COOKIE, session)
-            .body(Body::empty()).unwrap(),
-    ).await.unwrap();
+    let logout = call(
+        &app, Method::POST, "/developer/logout", String::new(),
+        &[("origin", "http://127.0.0.1:3000"), ("cookie", session)],
+    ).await;
     assert_eq!(logout.status(), StatusCode::OK);
-    let rejected = app.oneshot(
-        Request::builder()
-            .uri("/developer/clients")
-            .header(header::COOKIE, session)
-            .body(Body::empty()).unwrap(),
-    ).await.unwrap();
+    let rejected = call(
+        &app, Method::GET, "/developer/clients", String::new(),
+        &[("cookie", session)],
+    ).await;
     assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
 }
