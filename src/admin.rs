@@ -1,6 +1,6 @@
 //! Administrative CLI only. No remote client registration or developer API.
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, ModelTrait, Statement,
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, ModelTrait, Statement, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -64,11 +64,46 @@ async fn bootstrap_administrator(
     Ok(())
 }
 
+/// Credential recovery/rotation requires trusted local database access.
+async fn rotate_administrator_token(
+    db: &DatabaseConnection,
+    username: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (token, _) = generate_token();
+    let digest = Sha256::digest(token.as_bytes()).to_vec();
+    let tx = db.begin().await?;
+    let updated = tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE developer_administrators SET token_hash = ? WHERE username = ? AND active = 1",
+        [digest.into(), username.to_owned().into()],
+    )).await?;
+    if updated.rows_affected() != 1 {
+        return Err("Unknown or disabled administrator".into());
+    }
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_admin_events(id, administrator_id, event_type, created_at) SELECT ?, id, 'credential_rotated', ? FROM developer_administrators WHERE username = ?",
+        [
+            Uuid::new_v4().to_string().into(),
+            chrono::Utc::now().to_rfc3339().into(),
+            username.to_owned().into(),
+        ],
+    )).await?;
+    tx.commit().await?;
+    println!("New administrator token (previous token revoked; store this once): {token}");
+    Ok(())
+}
+
 pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let db = db().await?;
     match args {
         [command, action, username] if command == "admin" && action == "bootstrap" => {
             bootstrap_administrator(&db, username).await?;
+        }
+        [command, action, operation, username]
+            if command == "admin" && action == "token" && operation == "rotate" =>
+        {
+            rotate_administrator_token(&db, username).await?;
         }
         [command, action, kind, name, redirects @ ..] if command == "client" && action == "add" => {
             let kind = ClientType::parse(kind).ok_or("Type must be web or desktop")?;
@@ -96,7 +131,7 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id> | admin bootstrap <username>".into()),
+        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id> | admin bootstrap <username> | admin token rotate <username>".into()),
     }
     Ok(())
 }
