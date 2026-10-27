@@ -155,6 +155,27 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     )
     .await;
     assert_eq!(desktop_rotation.status(), StatusCode::NOT_FOUND);
+    let web_id = register_client(
+        &inspect_db,
+        "Confidential Web",
+        ClientType::Web,
+        &["https://web.example.test/callback".to_owned()],
+    )
+    .await
+    .unwrap();
+    let incorrect_rotation = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{web_id}/secret"),
+        r#"{"administrator_token":"invalid"}"#.into(),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+            ("cookie", session),
+        ],
+    )
+    .await;
+    assert_eq!(incorrect_rotation.status(), StatusCode::UNAUTHORIZED);
     let unauthorized_disable = call(
         &app,
         Method::POST,
