@@ -142,7 +142,7 @@ pub async fn logout(
 
 pub async fn page() -> Html<&'static str> {
     Html(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Developer console</title></head><body><main><h1>Donnarieix Auth — Developer console</h1><form id="signin"><label>Administrator <input name="username" required autocomplete="username"></label><label>Recovery credential <input type="password" name="token" required autocomplete="current-password"></label><button>Sign in</button></form><p id="status" role="alert"></p><section><h2>Registered applications</h2><ul id="apps"></ul></section><button id="signout">Sign out</button></main><script>
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Developer console</title></head><body><main><h1>Donnarieix Auth — Developer console</h1><form id="signin"><label>Administrator <input name="username" required autocomplete="username"></label><label>Recovery credential <input type="password" name="token" required autocomplete="current-password"></label><button>Sign in</button></form><p id="status" role="alert"></p><section><h2>Registered applications</h2><ul id="apps"></ul></section><p><a href="/developer/new-client">Register application</a></p><button id="signout">Sign out</button></main><script>
 const status = document.getElementById('status');
 async function refresh() {
  const r = await fetch('/developer/clients', {credentials:'same-origin'});
