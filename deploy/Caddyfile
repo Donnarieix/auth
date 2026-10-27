@@ -1,0 +1,8 @@
+# Set AUTH_DOMAIN in Caddy's own process environment.
+# Caddy obtains and renews the public TLS certificate.
+{$AUTH_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3000 {
+        header_up Host {host}
+    }
+}
