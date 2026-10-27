@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    body::Body,
+    body::{Body, to_bytes},
     http::{Method, Request, StatusCode, header},
     response::Response,
 };
@@ -9,7 +9,11 @@ use sha2::{Digest, Sha256};
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use crate::{router, schema, state::AppState};
+use crate::{
+    router, schema,
+    services::client::{ClientType, register_client},
+    state::AppState,
+};
 
 async fn call(
     app: &Router,
