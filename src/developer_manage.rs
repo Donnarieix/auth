@@ -8,8 +8,8 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 use crate::{
     developer_session::authenticated_cookie,
@@ -256,7 +256,11 @@ pub async fn rotate_secret(
     let admin_hash = Sha256::digest(payload.administrator_token.as_bytes()).to_vec();
     let (secret, _) = generate_token();
     let new_hash = Sha256::digest(secret.as_bytes()).to_vec();
-    let tx = state.db.begin().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let authorized = tx.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT id FROM developer_administrators WHERE id = ? AND token_hash = ? AND active = 1",
