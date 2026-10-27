@@ -9,10 +9,14 @@ use axum_extra::extract::CookieJar;
 use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use sha2::{Digest, Sha256};
 
 use crate::{
     developer_session::authenticated_cookie,
-    services::client::{ClientType, register_client_with_actor, validate_redirect_uri},
+    services::{
+        client::{ClientType, register_client_with_actor, validate_redirect_uri},
+        session::generate_token,
+    },
     state::AppState,
 };
 
@@ -218,4 +222,67 @@ pub async fn replace_redirects(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+pub struct RotateSecretRequest {
+    administrator_token: String,
+}
+
+#[derive(Serialize)]
+pub struct RotatedSecret {
+    client_secret: String,
+}
+
+pub async fn rotate_secret(
+    State(state): State<AppState>,
+    Path(client_id): Path<String>,
+    jar: CookieJar,
+    Json(payload): Json<RotateSecretRequest>,
+) -> Result<Json<RotatedSecret>, StatusCode> {
+    let actor = authenticated_cookie(&state, &jar)
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    if !state
+        .abuse
+        .allow("developer_client_secret", &actor.to_string(), 15, 3)
+        .await
+    {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+    if payload.administrator_token.len() != 43 || !payload.administrator_token.is_ascii() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let admin_hash = Sha256::digest(payload.administrator_token.as_bytes()).to_vec();
+    let (secret, _) = generate_token();
+    let new_hash = Sha256::digest(secret.as_bytes()).to_vec();
+    let tx = state.db.begin().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let authorized = tx.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "SELECT id FROM developer_administrators WHERE id = ? AND token_hash = ? AND active = 1",
+        [actor.to_string().into(), admin_hash.into()],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if authorized.is_none() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let updated = tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE clients SET client_secret_hash = ? WHERE client_id = ? AND client_type = 'web' AND active = 1",
+        [new_hash.into(), client_id.clone().into()],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if updated.rows_affected() != 1 {
+        return Err(StatusCode::NOT_FOUND);
+    }
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_admin_events(id,administrator_id,event_type,created_at) VALUES (?,?,?,?)",
+        [
+            Uuid::new_v4().to_string().into(),
+            actor.to_string().into(),
+            format!("client_secret_rotated:{client_id}").into(),
+            chrono::Utc::now().to_rfc3339().into(),
+        ],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(RotatedSecret { client_secret: secret }))
 }
