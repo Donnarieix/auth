@@ -121,7 +121,9 @@ pub async fn disable(
             format!("client_disabled:{client_id}").into(),
             chrono::Utc::now().to_rfc3339().into(),
         ],
-    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ))
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     tx.commit()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -184,13 +186,21 @@ pub async fn replace_redirects(
         DbBackend::Sqlite,
         "DELETE FROM client_redirect_uris WHERE client_id = ?",
         [internal_id.clone().into()],
-    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ))
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     for uri in &payload.redirect_uris {
         tx.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO client_redirect_uris (id,client_id,redirect_uri) VALUES (?,?,?)",
-            [Uuid::new_v4().to_string().into(), internal_id.clone().into(), uri.clone().into()],
-        )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            [
+                Uuid::new_v4().to_string().into(),
+                internal_id.clone().into(),
+                uri.clone().into(),
+            ],
+        ))
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
     tx.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
@@ -201,7 +211,11 @@ pub async fn replace_redirects(
             format!("redirects_updated:{client_id}").into(),
             chrono::Utc::now().to_rfc3339().into(),
         ],
-    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    tx.commit().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ))
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tx.commit()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }
