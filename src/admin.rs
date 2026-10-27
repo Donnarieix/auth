@@ -39,7 +39,7 @@ async fn bootstrap_administrator(
     let count = db
         .query_one_raw(Statement::from_string(
             DbBackend::Sqlite,
-            "SELECT COUNT(*) AS total FROM developer_administrators".into(),
+            "SELECT COUNT(*) AS total FROM developer_administrators",
         ))
         .await?
         .ok_or("Unable to inspect administrator accounts")?;
