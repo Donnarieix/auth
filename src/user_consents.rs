@@ -7,7 +7,7 @@ use axum::{
     http::StatusCode,
 };
 use chrono::Utc;
-use sea_orm::{EntityTrait, QueryFilter, TransactionTrait, ActiveModelTrait, ActiveValue::Set, sea_query::Expr};
+use sea_orm::{EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr};
 use serde::Serialize;
 use uuid::Uuid;
 
