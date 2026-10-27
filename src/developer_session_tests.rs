@@ -138,6 +138,19 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     )
     .await;
     assert_eq!(updated_redirect.status(), StatusCode::NO_CONTENT);
+    let desktop_rotation = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{client_id}/secret"),
+        format!(r#"{{"administrator_token":"{token}"}}"#),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+            ("cookie", session),
+        ],
+    )
+    .await;
+    assert_eq!(desktop_rotation.status(), StatusCode::NOT_FOUND);
     let unauthorized_disable = call(
         &app,
         Method::POST,
