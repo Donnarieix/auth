@@ -325,7 +325,7 @@ mod confidential_client_tests {
         assert!(!valid_web_client_secret(
             &headers,
             id,
-            &Sha256::digest(b"wrong").to_vec()
+            &Sha256::digest(b"wrong")
         ));
         assert!(!valid_web_client_secret(&HeaderMap::new(), id, &digest));
     }
