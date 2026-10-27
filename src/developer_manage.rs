@@ -1,10 +1,5 @@
 //! Authenticated developer client registration, independent of end-user SSO.
-use axum::{
-    Json,
-    extract::State,
-    http::StatusCode,
-    response::Html,
-};
+use axum::{Json, extract::State, http::StatusCode, response::Html};
 use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
 
