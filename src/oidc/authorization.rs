@@ -136,15 +136,7 @@ pub async fn authorization_page(
         // API login is a same-origin JSON endpoint. The browser sends the
         // Origin header and saves its host-only HttpOnly session cookie.
         format!(
-            "{details}<p>Sign in with your verified email to approve access. <a href=\'/account\'>Register or recover an account</a>.</p><form id='login'><label>Email <input name='email' type='email' autocomplete='username' required></label><label>Password <input name='password' type='password' autocomplete='current-password' required></label><button>Sign in</button></form><p id='status' role='alert'></p><script>
-document.getElementById('login').addEventListener('submit', async (event) => {{
- event.preventDefault();
- const form = new FormData(event.target);
- const response = await fetch('/login', {{method:'POST', headers:{{'Content-Type':'application/json'}}, credentials:'same-origin', body: JSON.stringify({{email: form.get('email'), password: form.get('password')}})}});
- if (response.ok) location.reload();
- else document.getElementById('status').textContent = 'Sign-in failed. Check credentials and email verification.';
-}});
-</script>"
+            "{details}<p>Sign in with your verified email to approve access. <a href=\'/account\'>Register or recover an account</a>.</p><form id='login'><label>Email <input name='email' type='email' autocomplete='username' required></label><label>Password <input name='password' type='password' autocomplete='current-password' required></label><button>Sign in</button></form><p id='status' role='alert'></p><script defer src='/assets/authorize-login.js'></script>"
         )
     };
     let page = format!(
