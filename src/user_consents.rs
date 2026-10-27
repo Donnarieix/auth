@@ -146,13 +146,22 @@ mod tests {
             expires_at: Set(now + Duration::minutes(30)),
             last_use: Set(now),
             active: Set(true),
-        }.insert(&db).await.unwrap();
+        }
+        .insert(&db)
+        .await
+        .unwrap();
         let client_id = register_client(
-            &db, "Consent Fixture", ClientType::Desktop,
+            &db,
+            "Consent Fixture",
+            ClientType::Desktop,
             &["http://127.0.0.1:44220/callback".into()],
-        ).await.unwrap();
+        )
+        .await
+        .unwrap();
         let app_row = get_client(&db, &client_id).await.unwrap().unwrap();
-        consent::approve(&db, uid, app_row.id, "openid profile").await.unwrap();
+        consent::approve(&db, uid, app_row.id, "openid profile")
+            .await
+            .unwrap();
 
         let router = router(AppState::with_db(db.clone()));
         let cookie = format!("auth_session={token}");
