@@ -1,12 +1,12 @@
 //! Only an administrator with local database access may register a client.
 //! Never accept client registrations over an unauthenticated public endpoint.
-use chrono::Utc;
-use sha2::{Digest, Sha256};
 use crate::services::session::generate_token;
+use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, ModelTrait,
     QueryFilter, TransactionTrait,
 };
+use sha2::{Digest, Sha256};
 use url::{Host, Url};
 use uuid::Uuid;
 
