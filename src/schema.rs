@@ -163,6 +163,9 @@ const DEVELOPER_SESSION_SCHEMA: &[&str] = &[
         revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0,1))
     )"#,
     "CREATE INDEX developer_sessions_admin_idx ON developer_sessions(administrator_id)",
+    r#"CREATE TRIGGER developer_token_rotation_revokes_sessions
+        AFTER UPDATE OF token_hash ON developer_administrators
+        BEGIN UPDATE developer_sessions SET revoked = 1 WHERE administrator_id = NEW.id; END"#,
 ];
 
 fn statement(sql: &str) -> Statement {
