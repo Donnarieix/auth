@@ -17,6 +17,7 @@ credentials or personal identity data should be loaded into a public instance.
   management and one-time secret rotation; audited privileged mutations.
 - [x] CSRF origin checks, strict developer cookies, rate-limit hooks,
   explicit browser response security headers and a loopback-only listener.
+- [x] First-party JavaScript served as external assets; CSP denies inline scripts.
 - [x] Self-service browser UI for registration, email verification and password
   recovery; account tokens are hashed and single-use.
 - [x] Explicit localhost development OIDC origin, persistent local signing key
@@ -30,8 +31,8 @@ credentials or personal identity data should be loaded into a public instance.
   installation, including both desktop and confidential web clients.
 - [ ] Perform independent client interoperability and adversarial testing,
   beyond in-process integration tests.
-- [ ] Replace inline JavaScript with external or nonce-protected scripts and
-  deploy a strict CSP before public exposure.
+- [ ] Verify CSP enforcement and browser compatibility under a real HTTPS
+  deployment, including security regression testing.
 - [ ] Add administrator MFA and multi-admin lifecycle; define administrative
   recovery and security-event monitoring policy.
 - [ ] Harden operational throttling for distributed/public deployments,
