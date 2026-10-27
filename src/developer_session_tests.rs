@@ -125,6 +125,19 @@ async fn developer_browser_session_is_isolated_and_revocable() {
         .unwrap()
         .unwrap();
     let client_id: String = client_row.try_get("", "client_id").unwrap();
+    let updated_redirect = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{client_id}/redirects"),
+        r#"{"redirect_uris":["http://127.0.0.1:44999/return"]}"#.into(),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+            ("cookie", session),
+        ],
+    )
+    .await;
+    assert_eq!(updated_redirect.status(), StatusCode::NO_CONTENT);
     let unauthorized_disable = call(
         &app,
         Method::POST,
