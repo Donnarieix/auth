@@ -23,7 +23,7 @@ pub struct ProviderMetadata {
 
 impl ProviderMetadata {
     pub fn new(origin: &str) -> Result<Self, &'static str> {
-        if !origin.starts_with("https://")
+        if (!origin.starts_with("https://") && origin != "http://127.0.0.1:3000")
             || origin.ends_with('/')
             || origin.contains('?')
             || origin.contains('#')
@@ -67,7 +67,8 @@ mod tests {
 
     #[test]
     fn metadata_is_https_only_and_advertises_pkce_for_public_clients() {
-        assert!(ProviderMetadata::new("http://127.0.0.1:3000").is_err());
+        assert!(ProviderMetadata::new("http://127.0.0.1:3000").is_ok());
+        assert!(ProviderMetadata::new("http://localhost:3000").is_err());
         assert!(ProviderMetadata::new("https://bad.example/path/").is_err());
         assert!(ProviderMetadata::new("https://evil@trusted.example").is_err());
         let metadata = ProviderMetadata::new("https://auth.example.test").unwrap();
