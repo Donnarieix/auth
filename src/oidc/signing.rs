@@ -342,6 +342,29 @@ mod tests {
     }
 
     #[test]
+    fn local_issuer_only_accepts_exact_loopback_origin() {
+        let (private, _) = keypair();
+        assert!(SigningKeys::from_pem(
+            "http://127.0.0.1:3000",
+            "development-local",
+            &private,
+            &[],
+        ).is_ok());
+        assert!(SigningKeys::from_pem(
+            "http://localhost:3000",
+            "development-local",
+            &private,
+            &[],
+        ).is_err());
+        assert!(SigningKeys::from_pem(
+            "http://192.168.1.10:3000",
+            "development-local",
+            &private,
+            &[],
+        ).is_err());
+    }
+
+    #[test]
     fn key_rotation_keeps_only_public_material_for_previous_keys() {
         let (old_private, old_public) = keypair();
         let (new_private, _) = keypair();
