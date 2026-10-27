@@ -135,9 +135,8 @@ const ACCESS_TOKEN_SCHEMA: &[&str] = &[
         BEGIN UPDATE oidc_access_tokens SET revoked = 1 WHERE user_id = NEW.user_id; END"#,
 ];
 
-const CONFIDENTIAL_WEB_SCHEMA: &[&str] = &[
-    "ALTER TABLE clients ADD COLUMN client_secret_hash BLOB",
-];
+const CONFIDENTIAL_WEB_SCHEMA: &[&str] =
+    &["ALTER TABLE clients ADD COLUMN client_secret_hash BLOB"];
 
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
