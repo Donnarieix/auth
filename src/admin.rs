@@ -4,7 +4,7 @@ use sea_orm::{Database, DatabaseConnection, EntityTrait, ModelTrait};
 use crate::{
     entities::{client, client_redirect_uri},
     schema,
-    services::client::{ClientType, disable_client, register_client},
+    services::client::{ClientType, disable_client, register_client, rotate_web_client_secret},
 };
 
 async fn db() -> Result<DatabaseConnection, Box<dyn std::error::Error>> {
@@ -29,6 +29,12 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 return Err("No active client with that ID".into());
             }
         }
+        [command, action, operation, id]
+            if command == "client" && action == "secret" && operation == "rotate" =>
+        {
+            let secret = rotate_web_client_secret(&db, id).await?;
+            println!("New client secret (save now; it cannot be retrieved again): {secret}");
+        }
         [command, action] if command == "client" && action == "list" => {
             for app in client::Entity::find().all(&db).await? {
                 println!("{} | {} | {} | active={}", app.client_id, app.name, app.client_type, app.active);
@@ -37,7 +43,7 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id>".into()),
+        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id>".into()),
     }
     Ok(())
 }
