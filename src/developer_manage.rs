@@ -142,7 +142,11 @@ pub async fn replace_redirects(
     let actor = authenticated_cookie(&state, &jar)
         .await
         .ok_or(StatusCode::UNAUTHORIZED)?;
-    if !state.abuse.allow("developer_redirect_update", &actor.to_string(), 30, 10).await {
+    if !state
+        .abuse
+        .allow("developer_redirect_update", &actor.to_string(), 30, 10)
+        .await
+    {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     if payload.redirect_uris.is_empty() || payload.redirect_uris.len() > 12 {
@@ -152,7 +156,11 @@ pub async fn replace_redirects(
     if unique.len() != payload.redirect_uris.len() {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let tx = state.db.begin().await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let tx = state
+        .db
+        .begin()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let row = tx.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT id, client_type FROM clients WHERE client_id = ? AND active = 1",
