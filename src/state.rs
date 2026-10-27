@@ -75,8 +75,11 @@ impl AppState {
 
         let security = SecurityConfig::from_env().expect("Invalid AUTH_PUBLIC_ORIGIN");
         let mut state = Self::with_mailer(db, Mailer::from_env(security.secure));
-        state.oidc_keys = SigningKeys::from_env(&security.origin)
-            .expect("Invalid OIDC signing key configuration")
+        let configured = SigningKeys::from_env(&security.origin)
+            .expect("Invalid OIDC signing key configuration");
+        state.oidc_keys = configured
+            .or_else(|| (!security.secure).then(|| Self::development_keys()
+                .expect("Cannot initialize loopback signing key")))
             .map(Arc::new);
         state.security = security;
         state
