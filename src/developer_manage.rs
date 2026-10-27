@@ -199,8 +199,8 @@ pub async fn replace_redirects(
                 uri.clone().into(),
             ],
         ))
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
     tx.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
