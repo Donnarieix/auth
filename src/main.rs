@@ -39,6 +39,8 @@ mod services;
 mod state;
 
 #[cfg(test)]
+mod browser_assets_tests;
+#[cfg(test)]
 mod developer_session_tests;
 #[cfg(test)]
 mod integration_tests;
