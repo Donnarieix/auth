@@ -54,7 +54,10 @@ fn router(state: AppState) -> Router {
         .route("/me", get(me))
         .route("/logout", post(logout))
         .route("/account/consents", get(user_consents::list))
-        .route("/account/consents/{client_id}/revoke", post(user_consents::revoke))
+        .route(
+            "/account/consents/{client_id}/revoke",
+            post(user_consents::revoke),
+        )
         .route_layer(axum_middleware::from_fn_with_state(state.clone(), auth));
 
     let mut app = Router::new()
