@@ -176,7 +176,7 @@ pub async fn replace_redirects(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    let internal_id: String = row
+    let internal_id: Uuid = row
         .try_get("", "id")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let kind: String = row
@@ -189,7 +189,7 @@ pub async fn replace_redirects(
     tx.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "DELETE FROM client_redirect_uris WHERE client_id = ?",
-        [internal_id.clone().into()],
+        [internal_id.into()],
     ))
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -199,7 +199,7 @@ pub async fn replace_redirects(
             "INSERT INTO client_redirect_uris (id,client_id,redirect_uri) VALUES (?,?,?)",
             [
                 Uuid::new_v4().to_string().into(),
-                internal_id.clone().into(),
+                internal_id.into(),
                 uri.clone().into(),
             ],
         ))
