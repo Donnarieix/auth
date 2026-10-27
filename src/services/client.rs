@@ -4,7 +4,7 @@ use crate::services::session::generate_token;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, TransactionTrait,
+    QueryFilter, TransactionTrait, ConnectionTrait, DbBackend, Statement,
 };
 use sha2::{Digest, Sha256};
 use url::{Host, Url};
@@ -85,6 +85,18 @@ pub async fn register_client(
     kind: ClientType,
     uris: &[String],
 ) -> Result<String, DbErr> {
+    register_client_with_actor(db, name, kind, uris, None).await
+}
+
+/// The developer API passes a verified administrator ID to make registration
+/// and its privileged audit entry part of the same SQLite transaction.
+pub async fn register_client_with_actor(
+    db: &DatabaseConnection,
+    name: &str,
+    kind: ClientType,
+    uris: &[String],
+    actor: Option<Uuid>,
+) -> Result<String, DbErr> {
     if name.trim() != name || name.is_empty() || name.len() > 100 {
         return Err(DbErr::Custom("Invalid client display name".into()));
     }
@@ -124,6 +136,18 @@ pub async fn register_client(
         }
         .insert(&tx)
         .await?;
+    }
+    if let Some(actor) = actor {
+        tx.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO developer_admin_events (id, administrator_id, event_type, created_at) VALUES (?, ?, ?, ?)",
+            [
+                Uuid::new_v4().to_string().into(),
+                actor.to_string().into(),
+                format!("client_created:{public_id}").into(),
+                Utc::now().to_rfc3339().into(),
+            ],
+        )).await?;
     }
     tx.commit().await?;
     Ok(public_id)
