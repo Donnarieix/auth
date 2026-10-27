@@ -29,8 +29,14 @@ pub struct Mail {
 impl Mailer {
     pub fn from_env(secure: bool) -> Self {
         if let Ok(path) = std::env::var("AUTH_LOCAL_OUTBOX_DIR") {
-            assert!(!secure, "AUTH_LOCAL_OUTBOX_DIR is prohibited with HTTPS production origin");
-            assert!(std::env::var("SMTP_HOST").is_err(), "Do not configure local outbox and SMTP simultaneously");
+            assert!(
+                !secure,
+                "AUTH_LOCAL_OUTBOX_DIR is prohibited with HTTPS production origin"
+            );
+            assert!(
+                std::env::var("SMTP_HOST").is_err(),
+                "Do not configure local outbox and SMTP simultaneously"
+            );
             assert!(!path.is_empty(), "AUTH_LOCAL_OUTBOX_DIR must not be empty");
             return Self::LocalOutbox(PathBuf::from(path));
         }
@@ -69,16 +75,24 @@ impl Mailer {
                 task::spawn_blocking(move || {
                     std::fs::create_dir_all(&directory).map_err(|_| ())?;
                     let path = directory.join(format!("{}.txt", uuid::Uuid::new_v4()));
-                    let body = format!("To: {}\\nSubject: {}\\n\\n{}", mail.recipient, mail.subject, mail.body);
+                    let body = format!(
+                        "To: {}\\nSubject: {}\\n\\n{}",
+                        mail.recipient, mail.subject, mail.body
+                    );
                     use std::io::Write;
                     let mut options = std::fs::OpenOptions::new();
                     options.write(true).create_new(true);
                     #[cfg(unix)]
-                    { use std::os::unix::fs::OpenOptionsExt; options.mode(0o600); }
+                    {
+                        use std::os::unix::fs::OpenOptionsExt;
+                        options.mode(0o600);
+                    }
                     let mut file = options.open(path).map_err(|_| ())?;
                     file.write_all(body.as_bytes()).map_err(|_| ())
-                }).await.map_err(|_| ())?
-            },
+                })
+                .await
+                .map_err(|_| ())?
+            }
             Self::Smtp { transport, from } => {
                 let transport = transport.clone();
                 let from = from.clone();
