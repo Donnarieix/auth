@@ -164,6 +164,10 @@ async function refresh() {
    });
    li.append(' ',disable);
   }
+  const manage=document.createElement('a');
+  manage.href='/developer/manage-client?client_id='+encodeURIComponent(app.client_id);
+  manage.textContent='Manage';
+  li.append(' ',manage);
   list.append(li);
  }
 }
