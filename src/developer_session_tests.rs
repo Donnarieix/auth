@@ -45,6 +45,7 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     ))
     .await
     .unwrap();
+    let inspect_db = db.clone();
     let app = router(AppState::with_db(db));
     let headers = [
         ("origin", "http://127.0.0.1:3000"),
@@ -81,6 +82,40 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     )
     .await;
     assert_eq!(profile.status(), StatusCode::OK);
+    let create_payload = r#"{"name":"Desktop Test","client_type":"desktop","redirect_uris":["http://127.0.0.1:44888/callback"]}"#;
+    let blocked = call(
+        &app,
+        Method::POST,
+        "/developer/clients",
+        create_payload.into(),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+        ],
+    )
+    .await;
+    assert_eq!(blocked.status(), StatusCode::UNAUTHORIZED);
+    let created = call(
+        &app,
+        Method::POST,
+        "/developer/clients",
+        create_payload.into(),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+            ("cookie", session),
+        ],
+    )
+    .await;
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let audit = inspect_db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT id FROM developer_admin_events WHERE event_type LIKE 'client_created:%'",
+        ))
+        .await
+        .unwrap();
+    assert!(audit.is_some());
     let logout = call(
         &app,
         Method::POST,
