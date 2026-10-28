@@ -11,5 +11,6 @@ pub async fn page() -> Html<String> {
 const status=document.getElementById('status');
 document.querySelectorAll('[data-tab]').forEach(tab=>tab.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(t=>t.setAttribute('aria-selected',String(t===tab)));document.querySelectorAll('[data-view]').forEach(view=>view.hidden=view.dataset.view!==tab.dataset.tab);status.textContent='';}));
 document.querySelectorAll('form[data-path]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const button=form.querySelector('button[type=submit]');button.disabled=true;status.textContent='Envoi en cours…';status.dataset.error='false';try{const res=await fetch(form.dataset.path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(form)))});status.textContent=res.ok?'Demande reçue. Si un code est nécessaire, consultez votre messagerie (ou data/outbox en local).':'Impossible de traiter la demande. Vérifiez les champs et réessayez.';status.dataset.error=String(!res.ok);if(res.ok){form.reset();if(form.dataset.path==='/login'){window.location.assign('/account/profile');return;}if(form.dataset.path==='/register'){document.querySelector('[data-tab="verify"]').click();status.textContent='Compte créé. Vérifiez maintenant votre adresse email.';}}}catch{status.textContent='Serveur injoignable.';status.dataset.error='true';}finally{button.disabled=false;}}));
-</script>"####)
+</script>"####,
+    )
 }
