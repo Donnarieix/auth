@@ -163,10 +163,24 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
         "name=\"referrer\" content=\"no-referrer\"",
         "name=\"referrer\" content=\"origin\"",
     );
+    // A form POST to /authorize/approve responds with a 303 to the registered
+    // callback. Browsers may apply form-action to the entire redirect chain.
+    // Permit only this validated client's origin, not arbitrary destinations.
+    let Ok(callback) = Url::parse(&request.redirect_uri) else {
+        return error_page(StatusCode::BAD_REQUEST, "Invalid redirect URI.");
+    };
+    let origin = callback.origin().ascii_serialization();
+    let policy = format!(
+        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: 'self'; connect-src 'self'; form-action 'self' {origin}; base-uri 'none'; frame-ancestors 'none'"
+    );
+    let Ok(policy) = axum::http::HeaderValue::from_str(&policy) else {
+        return error_page(StatusCode::BAD_REQUEST, "Invalid redirect origin.");
+    };
     (
         [
-            (axum::http::header::CACHE_CONTROL, "no-store"),
-            (axum::http::header::REFERRER_POLICY, "origin"),
+            (axum::http::header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store")),
+            (axum::http::header::REFERRER_POLICY, axum::http::HeaderValue::from_static("origin")),
+            (axum::http::header::CONTENT_SECURITY_POLICY, policy),
         ],
         page,
     )
