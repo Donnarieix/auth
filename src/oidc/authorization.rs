@@ -151,7 +151,9 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
     let page = crate::ui::render(
         "Autoriser l’accès",
         "/account",
-        &format!("<div class=\"page-heading\"><div class=\"eyebrow\">Accès à une application</div><h1>Continuer en toute confiance.</h1><p class=\"lead\">Vérifiez l'application qui demande l'accès à votre identité avant de continuer.</p></div><section class=\"panel\" style=\"max-width:680px\">{body}</section>"),
+        &format!(
+            "<div class=\"page-heading\"><div class=\"eyebrow\">Accès à une application</div><h1>Continuer en toute confiance.</h1><p class=\"lead\">Vérifiez l'application qui demande l'accès à votre identité avant de continuer.</p></div><section class=\"panel\" style=\"max-width:680px\">{body}</section>"
+        ),
     );
     (
         [
