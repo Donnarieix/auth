@@ -57,6 +57,8 @@ be completed before testing privileged flows. For credential recovery, the trust
 
 Registered desktop client callbacks may use the exact loopback HTTP URI with a fixed port; web client callbacks require HTTPS. Web clients additionally require a secret, which can be created in the developer console with administrator reauthentication or using `cargo run -- client secret rotate <client-id>` with the server stopped. Never put the web client secret in browser JavaScript.
 
+When the complete local prototype is ready to exercise manually, use the [single-session acceptance checklist](LOCAL_ACCEPTANCE.md) rather than pulling and testing each PR separately.
+
 ## Automated checks before manual QA
 
 ```sh
