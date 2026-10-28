@@ -174,50 +174,11 @@ pub async fn logout(
     Ok(jar.remove(cleared))
 }
 
-pub async fn page() -> Html<&'static str> {
-    Html(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Developer console</title></head><body><main><h1>Donnarieix Auth — Developer console</h1><form id="signin"><label>Administrator <input name="username" required autocomplete="username"></label><label>Recovery credential <input type="password" name="token" required autocomplete="current-password"></label><label>Authenticator code (if enabled) <input name="totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6"></label><button>Sign in</button></form><p id="status" role="alert"></p><section><h2>Registered applications</h2><ul id="apps"></ul></section><p><a href="/developer/new-client">Register application</a></p><button id="signout">Sign out</button></main><script>
-const status = document.getElementById('status');
-async function refresh() {
- const r = await fetch('/developer/clients', {credentials:'same-origin'});
- const list = document.getElementById('apps');
- list.replaceChildren();
- if (!r.ok) { status.textContent='Sign in with your developer credentials.'; return; }
- status.textContent='Developer session active.';
- for (const app of await r.json()) {
-  const li=document.createElement('li');
-  li.textContent=app.name+' — '+app.client_type+' — '+(app.active?'active':'disabled');
-  if (app.active) {
-   const disable=document.createElement('button');
-   disable.textContent='Disable';
-   disable.addEventListener('click', async () => {
-    if (!confirm('Disable '+app.name+'? Existing authorization grants will become unusable.')) return;
-    const res=await fetch('/developer/clients/'+encodeURIComponent(app.client_id)+'/disable',{method:'POST',credentials:'same-origin'});
-    if (!res.ok) {status.textContent='Could not disable client.';return;}
-    await refresh();
-   });
-   li.append(' ',disable);
-  }
-  const manage=document.createElement('a');
-  manage.href='/developer/manage-client?client_id='+encodeURIComponent(app.client_id);
-  manage.textContent='Manage';
-  li.append(' ',manage);
-  list.append(li);
- }
-}
-document.getElementById('signin').addEventListener('submit', async e => {
- e.preventDefault();
- const data=new FormData(e.target);
- const r=await fetch('/developer/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:data.get('username'),token:data.get('token'),totp:data.get('totp')||null})});
- e.target.reset();
- if (!r.ok) { status.textContent='Authentication failed.'; return; }
- await refresh();
-});
-document.getElementById('signout').addEventListener('click', async () => {
- await fetch('/developer/logout',{method:'POST',credentials:'same-origin'});
- await refresh();
-});
-refresh();
-</script></body></html>"#,
-    )
+pub async fn page() -> Html<String> {
+    crate::ui::render("Console développeur", "/developer", r####"<div class="page-heading"><div class="eyebrow">Console développeur</div><h1>Vos applications, simplement.</h1><p class="lead">Gérez les intégrations qui utilisent Donnarieix Auth, leurs accès et leurs adresses de retour.</p></div><div class="columns"><section class="panel" id="signin-panel"><h2>Accès administrateur</h2><p class="muted">Un espace réservé aux développeurs, indépendant de votre compte personnel.</p><form id="signin"><label>Identifiant<input name="username" autocomplete="username" required></label><label>Clé administrateur<input name="token" type="password" autocomplete="current-password" required></label><label>Code d'authentification (si activé)<input name="totp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}"></label><button type="submit">Me connecter</button></form></section><section class="panel" id="apps-panel" hidden><div class="toolbar"><h2>Mes applications</h2><a class="button" href="/developer/new-client">Créer une application</a></div><div id="apps"></div><button class="secondary" type="button" id="signout" style="margin-top:20px">Déconnexion</button></section><aside class="stack"><section class="panel"><h2>Comment ça fonctionne ?</h2><p class="muted">Chaque application possède un identifiant unique et une liste précise d'adresses de retour. Les secrets web restent privés.</p><a href="/.well-known/openid-configuration">Découverte OpenID Connect</a></section><section class="panel"><h2>Sécurité renforcée</h2><p class="muted">Utilisez un compte administrateur distinct et activez un authentificateur TOTP. Les changements sensibles sont journalisés.</p></section></aside></div><p class="status" id="status" role="status" aria-live="polite"></p><script>
+const status=document.getElementById('status'),sign=document.getElementById('signin-panel'),panel=document.getElementById('apps-panel'),list=document.getElementById('apps');
+async function refresh(){try{const response=await fetch('/developer/clients',{credentials:'same-origin'});sign.hidden=response.ok;panel.hidden=!response.ok;list.replaceChildren();if(!response.ok)return;const clients=await response.json();if(!clients.length){const empty=document.createElement('p');empty.className='empty';empty.textContent='Aucune application pour le moment.';list.append(empty);}for(const app of clients){const row=document.createElement('div');row.className='item';const info=document.createElement('div'),name=document.createElement('div'),type=document.createElement('div');name.className='item-title';name.textContent=app.name;type.className='hint';type.textContent=(app.client_type==='web'?'Web':'Bureau')+' · '+(app.active?'Active':'Désactivée');info.append(name,type);const link=document.createElement('a');link.className='button secondary';link.href='/developer/manage-client?client_id='+encodeURIComponent(app.client_id);link.textContent='Gérer';row.append(info,link);list.append(row);}}catch{status.textContent='Connexion au serveur impossible.';status.dataset.error='true';}}
+document.getElementById('signin').addEventListener('submit',async e=>{e.preventDefault();const form=e.target,button=form.querySelector('button');button.disabled=true;const data=new FormData(form);try{const r=await fetch('/developer/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:data.get('username'),token:data.get('token'),totp:data.get('totp')||null})});form.reset();status.textContent=r.ok?'Connexion réussie.':'Identifiants ou code incorrects.';status.dataset.error=String(!r.ok);await refresh();}catch{status.textContent='Connexion impossible.';status.dataset.error='true';}finally{button.disabled=false;}});
+document.getElementById('signout').addEventListener('click',async()=>{await fetch('/developer/logout',{method:'POST',credentials:'same-origin'});await refresh();status.textContent='Vous êtes déconnecté.';});refresh();
+</script>"####)
 }
