@@ -122,6 +122,21 @@ pub async fn authorization_page(
             "Unsupported or unconfigured client.",
         );
     }
+    // CSP form-action checks the redirect chain of HTML form submissions in
+    // browsers. Permit only the exact registered callback origin, otherwise
+    // the server's valid 303 is blocked after consent has been recorded.
+    let callback_origin = match Url::parse(&request.redirect_uri) {
+        Ok(uri) => uri.origin().ascii_serialization(),
+        Err(_) => return error_page(StatusCode::BAD_REQUEST, "Invalid redirect URI."),
+    };
+    let consent_csp = crate::security::CONTENT_SECURITY_POLICY.replace(
+        "form-action 'self';",
+        &format!("form-action 'self' {callback_origin};"),
+    );
+    let consent_csp = match axum::http::HeaderValue::from_str(&consent_csp) {
+        Ok(value) => value,
+        Err(_) => return error_page(StatusCode::BAD_REQUEST, "Invalid redirect origin."),
+    };
     let fields = hidden_request(&request);
     let details = format!(
         "<p>Application: <strong>{}</strong></p><p>Requested permissions: <code>{}</code></p>",
@@ -165,8 +180,15 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
     );
     (
         [
-            (axum::http::header::CACHE_CONTROL, "no-store"),
-            (axum::http::header::REFERRER_POLICY, "origin"),
+            (
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            ),
+            (
+                axum::http::header::REFERRER_POLICY,
+                axum::http::HeaderValue::from_static("origin"),
+            ),
+            (axum::http::header::CONTENT_SECURITY_POLICY, consent_csp),
         ],
         page,
     )
