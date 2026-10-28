@@ -267,3 +267,33 @@ a dedicated hardware-backed key manager. There is no remote reset or
 automatic second-factor recovery. Loss of the authenticator requires a
 controlled local operator procedure; no bypass is available from the browser.
 This is not an independent security assessment or production certification.
+
+
+## Token introspection (development-only, restricted)
+
+When signing keys are configured, `POST /introspect` implements an initial
+RFC 7662-style introspection endpoint. It accepts an
+`application/x-www-form-urlencoded` body with `token` and optional
+`token_type_hint`. The request MUST authenticate using
+`Authorization: Basic base64(client_id:client_secret)`.
+
+Only active, confidential `web` OAuth clients with a configured secret
+may introspect tokens **issued to the same OAuth client**. Unknown, expired,
+revoked or otherwise invalid tokens produce `{"active":false}`; failed
+client authentication produces 401. Successful results contain a user subject,
+client ID, scopes and timestamps. Responses must not be cached or logged with
+secrets. This endpoint is for trusted backends over HTTPS; never embed client
+secrets in browsers, mobile apps or desktop binaries.
+
+**Important limitation:** independent protected resource servers (APIs) are
+NOT registered as resource audiences yet. An API belonging to a public/mobile
+client cannot use this endpoint with its own credentials. Do not treat the
+current `client_id` restriction as a replacement for proper audience
+validation. Before adopting this for arbitrary apps and APIs, implement
+resource-server registration, audience-restricted access tokens, resource
+permissions/scopes, authenticated resource-server introspection and negative
+integration tests for cross-resource access and revocation. The signed ID
+token is for login only and MUST NOT be accepted as an API bearer token.
+Revoking a consent does not automatically expire pre-existing relying-party
+sessions; coordinated logout requires an additional protocol and client
+support.
