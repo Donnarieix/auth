@@ -179,6 +179,13 @@ const ADMIN_ENROLLMENT_REVOCATION_SCHEMA: &[&str] =
         FOR EACH ROW WHEN OLD.totp_secret IS NULL AND NEW.totp_secret IS NOT NULL
         BEGIN UPDATE developer_sessions SET revoked = 1 WHERE administrator_id = NEW.id; END"#];
 
+const RESOURCE_SCHEMA: &[&str] = &[
+    "CREATE TABLE oauth_resources (id TEXT PRIMARY KEY NOT NULL, audience TEXT NOT NULL UNIQUE, name TEXT NOT NULL, secret_hash BLOB NOT NULL, active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)))",
+    "CREATE TABLE oauth_client_resources (client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES oauth_resources(id) ON DELETE CASCADE, PRIMARY KEY(client_id,resource_id))",
+    "ALTER TABLE oidc_access_tokens ADD COLUMN audience TEXT",
+    "ALTER TABLE authorization_codes ADD COLUMN audience TEXT",
+];
+
 const ADMIN_TOTP_REQUIRED_SCHEMA: &[&str] = &[
     "ALTER TABLE developer_administrators ADD COLUMN totp_required INTEGER NOT NULL DEFAULT 0 CHECK(totp_required IN (0,1))",
     "UPDATE developer_administrators SET totp_required = 1 WHERE totp_secret IS NOT NULL",
@@ -198,7 +205,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 13 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 14 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -426,6 +433,17 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
             "INSERT INTO schema_migrations (version) VALUES (13)",
         ))
         .await?;
+    }
+
+    let has_v14 = tx
+        .query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 14"))
+        .await?
+        .is_some();
+    if !has_v14 {
+        for sql in RESOURCE_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (14)")).await?;
     }
 
     tx.commit().await
