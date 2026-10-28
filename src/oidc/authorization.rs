@@ -83,6 +83,7 @@ fn hidden_request(req: &AuthorizationRequest) -> String {
         hidden("client_id", &req.client_id),
         hidden("redirect_uri", &req.redirect_uri),
         hidden("scope", &req.scope),
+        req.resource.as_ref().map(|r| hidden("resource", r)).unwrap_or_default(),
         hidden("state", &req.state),
         hidden("nonce", &req.nonce),
         hidden("code_challenge", &req.code_challenge),
