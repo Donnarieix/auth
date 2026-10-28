@@ -488,3 +488,50 @@ async fn enrolled_totp_blocks_single_factor_login_and_replay() {
     let replay = call(&app, Method::POST, "/developer/login", payload, &headers).await;
     assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn enrolling_totp_revokes_all_existing_admin_sessions() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    schema::apply(&db).await.unwrap();
+    let admin = Uuid::new_v4();
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_administrators(id, username, token_hash, created_at, active) VALUES (?, ?, ?, ?, 1)",
+        [
+            admin.to_string().into(),
+            "operator".to_owned().into(),
+            Sha256::digest(b"old-token").to_vec().into(),
+            chrono::Utc::now().to_rfc3339().into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    let session = "S".repeat(43);
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_sessions(id,administrator_id,token_hash,expires_at,revoked) VALUES(?,?,?,?,0)",
+        [
+            Uuid::new_v4().to_string().into(),
+            admin.to_string().into(),
+            Sha256::digest(session.as_bytes()).to_vec().into(),
+            (chrono::Utc::now() + chrono::Duration::minutes(30))
+                .to_rfc3339()
+                .into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    let app = router(AppState::with_db(db.clone()));
+    let cookie = format!("developer_session={session}");
+    let before = call(&app, Method::GET, "/developer/clients", String::new(), &[("cookie", &cookie)]).await;
+    assert_eq!(before.status(), StatusCode::OK);
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE developer_administrators SET totp_secret = ? WHERE id = ?",
+        [b"12345678901234567890123456789012".to_vec().into(), admin.to_string().into()],
+    ))
+    .await
+    .unwrap();
+    let after = call(&app, Method::GET, "/developer/clients", String::new(), &[("cookie", &cookie)]).await;
+    assert_eq!(after.status(), StatusCode::UNAUTHORIZED);
+}
