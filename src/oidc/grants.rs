@@ -4,7 +4,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
-    TransactionTrait, sea_query::Expr,
+    TransactionTrait, ConnectionTrait, DbBackend, Statement, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -176,6 +176,16 @@ pub async fn redeem(
         || browser.expires_at <= now
     {
         return Err(GrantError::InvalidGrant);
+    }
+
+    // Resource grants can be withdrawn while a code is outstanding.
+    if let Some(audience) = &record.audience {
+        let allowed = tx.query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = ? AND r.audience = ? AND r.active = 1",
+            [app.id.to_string().into(), audience.clone().into()],
+        )).await?;
+        if allowed.is_none() { return Err(GrantError::InvalidGrant); }
     }
 
     // Consent may be revoked between authorization and code redemption.
