@@ -94,10 +94,15 @@ fn attach_security_headers(response: &mut Response, secure: bool) {
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
-    headers.insert(
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("no-referrer"),
-    );
+    // Most pages suppress referrers completely. OIDC consent pages override
+    // this with "origin" so native HTML POST forms send a usable Origin
+    // header, without exposing authorization query parameters.
+    if !headers.contains_key(header::REFERRER_POLICY) {
+        headers.insert(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        );
+    }
     // Preserve cacheability of public signing keys and discovery metadata;
     // authenticated, sensitive responses remain uncached by default.
     if !headers.contains_key(header::CACHE_CONTROL) {
