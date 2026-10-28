@@ -109,10 +109,12 @@ fn attach_security_headers(response: &mut Response, secure: bool) {
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
-    headers.insert(
-        "content-security-policy",
-        HeaderValue::from_static(CONTENT_SECURITY_POLICY),
-    );
+    if !headers.contains_key("content-security-policy") {
+        headers.insert(
+            "content-security-policy",
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        );
+    }
     if secure {
         headers.insert(
             header::STRICT_TRANSPORT_SECURITY,
