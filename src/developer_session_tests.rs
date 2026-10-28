@@ -434,7 +434,14 @@ async fn enrolled_totp_blocks_single_factor_login_and_replay() {
     let now_step = chrono::Utc::now().timestamp() / 30;
     let totp = format!("{:06}", crate::admin_totp::code(secret, now_step as u64));
     let payload = format!(r#"{{"username":"mfaoperator","token":"{token}","totp":"{totp}"}}"#);
-    let accepted = call(&app, Method::POST, "/developer/login", payload.clone(), &headers).await;
+    let accepted = call(
+        &app,
+        Method::POST,
+        "/developer/login",
+        payload.clone(),
+        &headers,
+    )
+    .await;
     assert_eq!(accepted.status(), StatusCode::OK);
     let replay = call(&app, Method::POST, "/developer/login", payload, &headers).await;
     assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
