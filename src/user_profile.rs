@@ -64,9 +64,7 @@ fn checked_profile(mut patch: UpdateProfile) -> Result<UpdateProfile, StatusCode
     Ok(patch)
 }
 
-pub async fn show(
-    Extension(account): Extension<user::Model>,
-) -> Json<ProfileView> {
+pub async fn show(Extension(account): Extension<user::Model>) -> Json<ProfileView> {
     Json(account.into())
 }
 
