@@ -155,10 +155,17 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
             "<div class=\"page-heading\"><div class=\"eyebrow\">Accès à une application</div><h1>Continuer en toute confiance.</h1><p class=\"lead\">Vérifiez l'application qui demande l'accès à votre identité avant de continuer.</p></div><section class=\"panel\" style=\"max-width:680px\">{body}</section>"
         ),
     );
+    // On a native HTML form POST, no-referrer can cause Origin: null.
+    // Only disclose the origin (never the sensitive authorization URL).
+    // The origin check remains strict on /authorize/approve and /deny.
+    let mut page = page;
+    page.0 = page
+        .0
+        .replace("name=\"referrer\" content=\"no-referrer\"", "name=\"referrer\" content=\"origin\"");
     (
         [
             (axum::http::header::CACHE_CONTROL, "no-store"),
-            (axum::http::header::REFERRER_POLICY, "no-referrer"),
+            (axum::http::header::REFERRER_POLICY, "origin"),
         ],
         page,
     )
