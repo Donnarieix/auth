@@ -20,6 +20,7 @@ use crate::{
 
 mod account_ui;
 mod admin;
+mod admin_totp;
 mod developer;
 mod developer_client_page;
 mod developer_manage;
