@@ -351,3 +351,33 @@ async fn rotated_or_expired_admin_sessions_cannot_access_clients() {
     .await;
     assert_eq!(expired.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn developer_login_throttling_cannot_be_bypassed_by_username_case() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    schema::apply(&db).await.unwrap();
+    let app = router(AppState::with_db(db));
+    let headers = [
+        ("origin", "http://127.0.0.1:3000"),
+        ("content-type", "application/json"),
+    ];
+    for attempt in 0..6 {
+        let username = if attempt % 2 == 0 { "Operator" } else { "operator" };
+        let response = call(
+            &app,
+            Method::POST,
+            "/developer/login",
+            format!(r#"{{"username":"{username}","token":"{}"}}"#, "X".repeat(43)),
+            &headers,
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            if attempt == 5 {
+                StatusCode::TOO_MANY_REQUESTS
+            } else {
+                StatusCode::UNAUTHORIZED
+            },
+        );
+    }
+}
