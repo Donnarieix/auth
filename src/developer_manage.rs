@@ -61,7 +61,10 @@ pub async fn create(
 }
 
 pub async fn create_page() -> Html<String> {
-    crate::ui::render("Nouvelle application", "/developer", r####"<div class="page-heading"><div class="eyebrow">Console développeur</div><h1>Nouvelle application</h1><p class="lead">Configurez précisément votre intégration et gardez la maîtrise de ses accès.</p></div><section class="panel" style="max-width:790px"><main><h1>Register OIDC application</h1><p>Only authenticated developer administrators may register clients. Use HTTPS callbacks for web clients; desktop callbacks may use explicitly registered loopback ports.</p><form id="client"><label>Application name <input name="name" maxlength="100" required></label><label>Type <select name="kind"><option value="desktop">Desktop (public PKCE)</option><option value="web">Web (confidential backend)</option></select></label><label>Redirect URIs (one per line) <textarea name="uris" required></textarea></label><button>Create client</button></form><p id="status" role="alert"></p><p><a href="/developer">Developer console</a></p></main><script>
+    crate::ui::render(
+        "Nouvelle application",
+        "/developer",
+        r####"<div class="page-heading"><div class="eyebrow">Console développeur</div><h1>Nouvelle application</h1><p class="lead">Configurez précisément votre intégration et gardez la maîtrise de ses accès.</p></div><section class="panel" style="max-width:790px"><main><h1>Register OIDC application</h1><p>Only authenticated developer administrators may register clients. Use HTTPS callbacks for web clients; desktop callbacks may use explicitly registered loopback ports.</p><form id="client"><label>Application name <input name="name" maxlength="100" required></label><label>Type <select name="kind"><option value="desktop">Desktop (public PKCE)</option><option value="web">Web (confidential backend)</option></select></label><label>Redirect URIs (one per line) <textarea name="uris" required></textarea></label><button>Create client</button></form><p id="status" role="alert"></p><p><a href="/developer">Developer console</a></p></main><script>
 document.getElementById('client').addEventListener('submit', async e => {
  e.preventDefault();
  const data=new FormData(e.target);
