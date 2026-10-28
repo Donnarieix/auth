@@ -297,3 +297,46 @@ token is for login only and MUST NOT be accepted as an API bearer token.
 Revoking a consent does not automatically expire pre-existing relying-party
 sessions; coordinated logout requires an additional protocol and client
 support.
+
+
+## Protected API resources (experimental, schema v14)
+
+Auth distinguishes OAuth applications (clients) from protected API audiences
+(resources). An API has its own secret, stored as a SHA-256 digest, and clients
+must be individually allowed to request an audience. Only an operator with
+local database access can change this registry:
+
+```sh
+cargo run -- resource add https://api.example.com "Example API"
+cargo run -- resource allow <oauth-client-id> https://api.example.com
+cargo run -- resource deny <oauth-client-id> https://api.example.com
+cargo run -- resource secret rotate https://api.example.com
+cargo run -- resource disable https://api.example.com
+```
+
+Record the resource secret shown once. Resource APIs must keep it on their own
+trusted backend; never ship it in Dioxus web bundles or mobile binaries.
+The resource sends `client_id:client_secret` via HTTP Basic to `/introspect`,
+using **its audience URI as the Basic username**, and verifies `active=true`
+and `aud` exactly matching that audience. The introspection result includes
+the OAuth client ID, stable user subject and approved identity scopes. An
+introspection response must not be used without its required audience match.
+The resource secret grants introspection rights, not arbitrary OAuth consent.
+
+OAuth clients optionally send `resource=https://api.example.com` on
+`/authorize` (the registered resource is carried through the consent form and
+single-use code exchange). Tokens issued without `resource` remain usable
+only by their original confidential client for legacy introspection; they
+must **not** be accepted by registered resource APIs. Each resource token is
+valid for just one audience. Revoking user consent, disabling a resource or
+removing a client-resource link revokes matching outstanding access tokens.
+For a desktop public client the resource secret belongs strictly on the API
+backend, while PKCE remains mandatory for the frontend.
+
+**Still to complete before production:** API-specific delegated scopes (the
+current scopes are OIDC identity scopes only), user-facing display/approval of
+each resource's permissions, proof-of-possession or other bearer-token theft
+mitigations, reliable back-channel logout/session coordination, admin audit
+events for resource changes, monitoring, key management and a real integration
+security review. The current resource flow is a groundwork implementation, not
+a claim of RFC 8707 certification or production interoperability.
