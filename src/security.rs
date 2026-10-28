@@ -180,6 +180,24 @@ mod tests {
     };
 
     #[test]
+    fn explicitly_scoped_consent_referrer_policy_is_preserved() {
+        let mut response = Response::new(Body::empty());
+        response.headers_mut().insert(
+            header::REFERRER_POLICY,
+            "origin".parse().unwrap(),
+        );
+        attach_security_headers(&mut response, false);
+        assert_eq!(response.headers()[header::REFERRER_POLICY], "origin");
+
+        let mut ordinary_response = Response::new(Body::empty());
+        attach_security_headers(&mut ordinary_response, false);
+        assert_eq!(
+            ordinary_response.headers()[header::REFERRER_POLICY],
+            "no-referrer"
+        );
+    }
+
+    #[test]
     fn response_headers_protect_sensitive_pages_and_https() {
         let mut response = Response::new(Body::empty());
         attach_security_headers(&mut response, false);
