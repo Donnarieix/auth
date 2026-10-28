@@ -86,7 +86,7 @@ impl SecurityConfig {
     }
 }
 
-const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 fn attach_security_headers(response: &mut Response, secure: bool) {
     let headers = response.headers_mut();
