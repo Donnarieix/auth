@@ -52,7 +52,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features
 ```
 
-Passing these checks is **not** an external interoperability validation. In particular, the independent `Donnarieix/auth-test-client` repository currently validates only HTTPS issuer URLs in its configuration; this differs from Auth's exact loopback development issuer. Do not work around this by disabling certificate checks or exposing Auth to the LAN. Resolve this client compatibility restriction before planning a first interactive OIDC smoke test.
+Passing these checks is **not** an external interoperability validation. The independent `Donnarieix/auth-test-client` now permits the exact `http://127.0.0.1:3000` loopback development issuer (HTTPS remains mandatory elsewhere). Its CI has completed a synthetic end-to-end account registration, email verification, OIDC authorization and signed ID-token validation with this provider. See [independent interoperability evidence](INTEROP_VALIDATION.md). This does not replace a real-browser QA campaign or a production security audit.
 
 ## Staging and production still require separate approval
 
