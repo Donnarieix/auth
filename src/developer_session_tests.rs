@@ -552,3 +552,35 @@ async fn enrolling_totp_revokes_all_existing_admin_sessions() {
     .await;
     assert_eq!(after.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn developer_login_is_locked_during_mfa_recovery_until_reenrollment() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    schema::apply(&db).await.unwrap();
+    let token = "M".repeat(43);
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_administrators(id,username,token_hash,created_at,active,totp_required) VALUES (?,?,?,?,1,1)",
+        [
+            Uuid::new_v4().to_string().into(),
+            "recovery".to_owned().into(),
+            Sha256::digest(token.as_bytes()).to_vec().into(),
+            chrono::Utc::now().to_rfc3339().into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    let app = router(AppState::with_db(db));
+    let request = call(
+        &app,
+        Method::POST,
+        "/developer/login",
+        format!(r#"{{"username":"recovery","token":"{token}"}}"#),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+        ],
+    )
+    .await;
+    assert_eq!(request.status(), StatusCode::UNAUTHORIZED);
+}

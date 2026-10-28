@@ -179,6 +179,11 @@ const ADMIN_ENROLLMENT_REVOCATION_SCHEMA: &[&str] =
         FOR EACH ROW WHEN OLD.totp_secret IS NULL AND NEW.totp_secret IS NOT NULL
         BEGIN UPDATE developer_sessions SET revoked = 1 WHERE administrator_id = NEW.id; END"#];
 
+const ADMIN_TOTP_REQUIRED_SCHEMA: &[&str] = &[
+    "ALTER TABLE developer_administrators ADD COLUMN totp_required INTEGER NOT NULL DEFAULT 0 CHECK(totp_required IN (0,1))",
+    "UPDATE developer_administrators SET totp_required = 1 WHERE totp_secret IS NOT NULL",
+];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -193,7 +198,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 12 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 13 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -403,6 +408,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (12)",
+        ))
+        .await?;
+    }
+
+    let has_v13 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 13",
+        ))
+        .await?
+        .is_some();
+    if !has_v13 {
+        for sql in ADMIN_TOTP_REQUIRED_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (13)",
         ))
         .await?;
     }
