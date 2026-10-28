@@ -38,10 +38,9 @@ mod schema;
 mod security;
 mod services;
 mod state;
-mod user_consents;
 mod ui;
+mod user_consents;
 mod user_profile;
-mod profile_page;
 
 #[cfg(test)]
 mod developer_session_tests;
