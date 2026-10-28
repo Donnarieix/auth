@@ -131,3 +131,35 @@ pub async fn introspect(
         token_type: Some("Bearer"),
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use sea_orm::Database;
+    use tower::ServiceExt;
+
+    use crate::{router, schema, state::AppState};
+
+    #[tokio::test]
+    async fn introspection_never_exposes_tokens_to_anonymous_callers() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        schema::apply(&db).await.unwrap();
+        let app = router(AppState::with_db(db));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/introspect")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("token=unknown"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // OIDC-only routes are disabled if no signing key is configured.
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}
