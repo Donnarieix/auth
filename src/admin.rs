@@ -184,6 +184,75 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         {
             rotate_administrator_token(&db, username).await?;
         }
+        [command, action, audience, name] if command == "resource" && action == "add" => {
+            if audience.len() > 256 || audience.len() < 8 || name.is_empty() || name.len() > 100 {
+                return Err("Invalid resource identifier or name".into());
+            }
+            let parsed = url::Url::parse(audience)?;
+            if parsed.scheme() != "https" || parsed.fragment().is_some()
+                || !parsed.username().is_empty() || parsed.password().is_some()
+                || parsed.query().is_some() || parsed.as_str() != audience
+            {
+                return Err("Resource audience must be a canonical HTTPS URL without query, fragment or credentials".into());
+            }
+            let (secret, _) = generate_token();
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
+                [
+                    Uuid::new_v4().to_string().into(),
+                    audience.to_owned().into(),
+                    name.to_owned().into(),
+                    Sha256::digest(secret.as_bytes()).to_vec().into(),
+                ],
+            )).await?;
+            println!("Resource audience: {audience}");
+            println!("Resource introspection secret (displayed once): {secret}");
+        }
+        [command, action, operation, audience] if command == "resource" && action == "secret" && operation == "rotate" => {
+            let (secret, _) = generate_token();
+            let result = db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE oauth_resources SET secret_hash = ? WHERE audience = ? AND active = 1",
+                [Sha256::digest(secret.as_bytes()).to_vec().into(), audience.to_owned().into()],
+            )).await?;
+            if result.rows_affected() != 1 { return Err("Unknown resource".into()); }
+            println!("Rotated resource secret (displayed once): {secret}");
+        }
+        [command, action, client_id, audience] if command == "resource" && action == "allow" => {
+            let result = db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "INSERT INTO oauth_client_resources(client_id,resource_id) SELECT c.id,r.id FROM clients c CROSS JOIN oauth_resources r WHERE c.client_id = ? AND c.active = 1 AND r.audience = ? AND r.active = 1",
+                [client_id.to_owned().into(), audience.to_owned().into()],
+            )).await?;
+            if result.rows_affected() != 1 { return Err("Unknown client/resource or already allowed".into()); }
+            println!("Client permitted to request resource");
+        }
+        [command, action, client_id, audience] if command == "resource" && action == "deny" => {
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "DELETE FROM oauth_client_resources WHERE client_id = (SELECT id FROM clients WHERE client_id = ?) AND resource_id = (SELECT id FROM oauth_resources WHERE audience = ?)",
+                [client_id.to_owned().into(), audience.to_owned().into()],
+            )).await?;
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE oidc_access_tokens SET revoked = 1 WHERE client_id = (SELECT id FROM clients WHERE client_id = ?) AND audience = ?",
+                [client_id.to_owned().into(), audience.to_owned().into()],
+            )).await?;
+            println!("Client resource access denied; existing tokens revoked");
+        }
+        [command, action, audience] if command == "resource" && action == "disable" => {
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE oauth_resources SET active = 0 WHERE audience = ?",
+                [audience.to_owned().into()],
+            )).await?;
+            db.execute_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "UPDATE oidc_access_tokens SET revoked = 1 WHERE audience = ?",
+                [audience.to_owned().into()],
+            )).await?;
+        }
         [command, action, kind, name, redirects @ ..] if command == "client" && action == "add" => {
             let kind = ClientType::parse(kind).ok_or("Type must be web or desktop")?;
             let id = register_client(&db, name, kind, redirects).await?;
