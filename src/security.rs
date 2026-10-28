@@ -86,7 +86,7 @@ impl SecurityConfig {
     }
 }
 
-const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+pub(crate) const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 fn attach_security_headers(response: &mut Response, secure: bool) {
     let headers = response.headers_mut();
@@ -109,10 +109,12 @@ fn attach_security_headers(response: &mut Response, secure: bool) {
         headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     }
     headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
-    headers.insert(
-        "content-security-policy",
-        HeaderValue::from_static(CONTENT_SECURITY_POLICY),
-    );
+    if !headers.contains_key("content-security-policy") {
+        headers.insert(
+            "content-security-policy",
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        );
+    }
     if secure {
         headers.insert(
             header::STRICT_TRANSPORT_SECURITY,
