@@ -13,7 +13,11 @@ pub fn render(title: &str, area: &str, body: &str) -> Html<String> {
     ];
     let mut links = String::new();
     for (name, href) in nav {
-        let current = if area == href { " aria-current=\"page\"" } else { "" };
+        let current = if area == href {
+            " aria-current=\"page\""
+        } else {
+            ""
+        };
         links.push_str(&format!("<a href=\"{href}\"{current}>{name}</a>"));
     }
     Html(format!(
