@@ -4,7 +4,7 @@ use axum::{
     Form,
     extract::{Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Redirect, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::CookieJar;
 use sea_orm::ModelTrait;
@@ -28,10 +28,11 @@ fn escape(input: &str) -> String {
 }
 
 fn error_page(status: StatusCode, message: &str) -> Response {
-    (status, Html(format!(
-        "<!doctype html><html><head><meta charset='utf-8'><meta name='referrer' content='no-referrer'><title>Auth</title></head><body><h1>Donnarieix Auth</h1><p>{}</p></body></html>",
-        escape(message)
-    ))).into_response()
+    (status, crate::ui::render(
+        "Demande non valide",
+        "/account",
+        &format!("<div class=\"page-heading\"><div class=\"eyebrow\">Authentification</div><h1>Cette demande ne peut pas aboutir.</h1></div><section class=\"panel\" style=\"max-width:600px\"><p>{}</p><a href=\"/account\">Retour au compte</a></section>", escape(message))
+    )).into_response()
 }
 
 async fn browser_session(
@@ -147,15 +148,19 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
 </script>"
         )
     };
-    let page = format!(
-        "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='referrer' content='no-referrer'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Donnarieix Auth</title></head><body><main><h1>Donnarieix Auth</h1>{body}</main></body></html>",
+    let page = crate::ui::render(
+        "Autoriser l’accès",
+        "/account",
+        &format!(
+            "<div class=\"page-heading\"><div class=\"eyebrow\">Accès à une application</div><h1>Continuer en toute confiance.</h1><p class=\"lead\">Vérifiez l'application qui demande l'accès à votre identité avant de continuer.</p></div><section class=\"panel\" style=\"max-width:680px\">{body}</section>"
+        ),
     );
     (
         [
             (axum::http::header::CACHE_CONTROL, "no-store"),
             (axum::http::header::REFERRER_POLICY, "no-referrer"),
         ],
-        Html(page),
+        page,
     )
         .into_response()
 }

@@ -97,36 +97,14 @@ pub async fn revoke(
 
 /// Browser view of the current user's granted applications; the endpoints,
 /// not this static page, authenticate the user and enforce CSRF.
-pub async fn page() -> Html<&'static str> {
-    Html(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Connected applications</title></head><body><main><h1>Connected applications</h1><p>Applications listed here can access the scopes you approved. Revoking an application immediately invalidates its current access tokens.</p><ul id="grants"></ul><p id="status" role="status"></p></main><script>
-const list=document.getElementById('grants');
-const status=document.getElementById('status');
-async function load(){
- list.replaceChildren();
- const response=await fetch('/account/consents',{credentials:'same-origin'});
- if(!response.ok){status.textContent='Sign in to view your applications.';return;}
- const grants=await response.json();
- if(!grants.length){status.textContent='No active application permissions.';return;}
- status.textContent='';
- for(const grant of grants){
-  const item=document.createElement('li');
-  const label=document.createElement('span');
-  label.textContent=grant.name+' — '+grant.scope;
-  const button=document.createElement('button');
-  button.textContent='Revoke';
-  button.addEventListener('click',async()=>{
-   if(!confirm('Remove access for '+grant.name+'?'))return;
-   button.disabled=true;
-   const result=await fetch('/account/consents/'+encodeURIComponent(grant.client_id)+'/revoke',{method:'POST',credentials:'same-origin'});
-   if(!result.ok){status.textContent='Unable to revoke permission.';button.disabled=false;return;}
-   await load();
-  });
-  item.append(label,' ',button);list.append(item);
- }
-}
-load();
-</script></body></html>"#,
+pub async fn page() -> Html<String> {
+    crate::ui::render(
+        "Applications liées",
+        "/account/permissions",
+        r####"<div class="page-heading"><div class="eyebrow">Confidentialité</div><h1>Applications connectées</h1><p class="lead">Voyez les accès que vous avez accordés. Retirez une autorisation quand vous le souhaitez.</p></div><div class="columns"><section class="panel"><div class="toolbar"><h2>Vos autorisations</h2><button class="secondary" id="reload" type="button">Actualiser</button></div><div id="grants" aria-live="polite"><p class="muted">Chargement des autorisations…</p></div><p id="consent-status" class="status" role="status" aria-live="polite"></p></section><aside class="panel"><h2>Vous gardez le contrôle.</h2><p class="muted">Révoquer une application désactive ses jetons d'accès en cours. Si vous l'utilisez à nouveau, elle devra demander votre consentement.</p><a href="/account/profile">Retour à mon profil</a></aside></div><script>
+const grants=document.getElementById('grants'),status=document.getElementById('consent-status');
+async function load(){try{const r=await fetch('/account/consents',{credentials:'same-origin'});grants.replaceChildren();if(!r.ok){const p=document.createElement('p');p.className='empty';p.textContent='Vous devez être connecté pour consulter les autorisations.';grants.append(p);return;}const list=await r.json();if(!list.length){const p=document.createElement('p');p.className='empty';p.textContent='Aucune application connectée pour le moment.';grants.append(p);}for(const item of list){const row=document.createElement('div');row.className='item';const left=document.createElement('div');const name=document.createElement('div');name.className='item-title';name.textContent=item.name;const scope=document.createElement('div');scope.className='hint';scope.textContent='Autorisations : '+item.scope;left.append(name,scope);const button=document.createElement('button');button.className='danger';button.type='button';button.textContent='Retirer';button.addEventListener('click',async()=>{if(!confirm('Retirer l’autorisation de '+item.name+' ?'))return;button.disabled=true;const result=await fetch('/account/consents/'+encodeURIComponent(item.client_id)+'/revoke',{method:'POST',credentials:'same-origin'});if(!result.ok){status.textContent='Retrait impossible. Réessayez.';status.dataset.error='true';button.disabled=false;return;}status.textContent='Autorisation retirée.';status.dataset.error='false';load();});row.append(left,button);grants.append(row);}}catch{status.textContent='Impossible de joindre le serveur.';status.dataset.error='true';}}document.getElementById('reload').addEventListener('click',load);load();
+</script>"####,
     )
 }
 

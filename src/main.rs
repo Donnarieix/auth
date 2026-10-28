@@ -32,12 +32,15 @@ mod middleware;
     reason = "OIDC request validation is staged until token issuance is implemented"
 )]
 mod oidc;
+mod profile_page;
 mod routes;
 mod schema;
 mod security;
 mod services;
 mod state;
+mod ui;
 mod user_consents;
+mod user_profile;
 
 #[cfg(test)]
 mod developer_session_tests;
@@ -53,6 +56,10 @@ mod session_tests;
 fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/me", get(me))
+        .route(
+            "/account/profile/data",
+            get(user_profile::show).post(user_profile::update),
+        )
         .route("/logout", post(logout))
         .route("/account/consents", get(user_consents::list))
         .route(
@@ -65,6 +72,7 @@ fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/account/permissions", get(user_consents::page))
         .route("/account", get(account_ui::page))
+        .route("/account/profile", get(profile_page::page))
         .route(
             "/developer/clients",
             get(developer::list_clients).post(developer_manage::create),
