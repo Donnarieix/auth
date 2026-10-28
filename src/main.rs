@@ -32,6 +32,7 @@ mod middleware;
     reason = "OIDC request validation is staged until token issuance is implemented"
 )]
 mod oidc;
+mod profile_page;
 mod routes;
 mod schema;
 mod security;
