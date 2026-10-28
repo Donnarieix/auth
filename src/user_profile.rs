@@ -73,7 +73,11 @@ pub async fn update(
     Extension(account): Extension<user::Model>,
     Json(patch): Json<UpdateProfile>,
 ) -> Result<Json<ProfileView>, StatusCode> {
-    if !state.abuse.allow("profile_update", &account.id.to_string(), 60, 15).await {
+    if !state
+        .abuse
+        .allow("profile_update", &account.id.to_string(), 60, 15)
+        .await
+    {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     let patch = checked_profile(patch)?;
@@ -81,7 +85,10 @@ pub async fn update(
     model.display_name = Set(patch.display_name.filter(|s| !s.is_empty()));
     model.avatar_url = Set(patch.avatar_url.filter(|s| !s.is_empty()));
     model.updated_at = Set(Utc::now());
-    let updated = model.update(&state.db).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let updated = model
+        .update(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(updated.into()))
 }
 
