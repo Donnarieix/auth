@@ -246,3 +246,108 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     .await;
     assert_eq!(rejected.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn rotated_or_expired_admin_sessions_cannot_access_clients() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    schema::apply(&db).await.unwrap();
+    let admin = Uuid::new_v4();
+    let token = "R".repeat(43);
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_administrators(id, username, token_hash, created_at, active) VALUES (?, ?, ?, ?, 1)",
+        [
+            admin.to_string().into(),
+            "operator".to_owned().into(),
+            Sha256::digest(token.as_bytes()).to_vec().into(),
+            chrono::Utc::now().to_rfc3339().into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    let app = router(AppState::with_db(db.clone()));
+    let login = call(
+        &app,
+        Method::POST,
+        "/developer/login",
+        format!(r#"{{"username":"operator","token":"{token}"}}"#),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+        ],
+    )
+    .await;
+    assert_eq!(login.status(), StatusCode::OK);
+    let cookie = login.headers()[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let profile = call(
+        &app,
+        Method::GET,
+        "/developer/clients",
+        String::new(),
+        &[("cookie", &cookie)],
+    )
+    .await;
+    assert_eq!(profile.status(), StatusCode::OK);
+
+    // A trusted operator rotates the root credential. SQLite's migration
+    // trigger must revoke all previously issued developer sessions.
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE developer_administrators SET token_hash = ? WHERE id = ?",
+        [
+            Sha256::digest(b"new-operator-credential").to_vec().into(),
+            admin.to_string().into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    let revoked = call(
+        &app,
+        Method::GET,
+        "/developer/clients",
+        String::new(),
+        &[("cookie", &cookie)],
+    )
+    .await;
+    assert_eq!(revoked.status(), StatusCode::UNAUTHORIZED);
+    let count = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT COUNT(*) AS count FROM developer_sessions WHERE administrator_id = ? AND revoked = 1",
+            [admin.to_string().into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let revoked_count: i64 = count.try_get("", "count").unwrap();
+    assert_eq!(revoked_count, 1);
+
+    // Even if the revoked bit is cleared, an expired session stays denied.
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE developer_sessions SET revoked = 0, expires_at = ? WHERE administrator_id = ?",
+        [
+            (chrono::Utc::now() - chrono::Duration::hours(1))
+                .to_rfc3339()
+                .into(),
+            admin.to_string().into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    let expired = call(
+        &app,
+        Method::GET,
+        "/developer/clients",
+        String::new(),
+        &[("cookie", &cookie)],
+    )
+    .await;
+    assert_eq!(expired.status(), StatusCode::UNAUTHORIZED);
+}
