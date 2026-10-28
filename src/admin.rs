@@ -109,7 +109,7 @@ async fn enroll_totp(
     rand::rng().fill(&mut secret);
     let result = db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "UPDATE developer_administrators SET totp_secret = ?, totp_last_step = -1 WHERE username = ? AND active = 1 AND totp_secret IS NULL",
+        "UPDATE developer_administrators SET totp_secret = ?, totp_last_step = -1, totp_required = 1 WHERE username = ? AND active = 1 AND totp_secret IS NULL",
         [secret.to_vec().into(), username.to_owned().into()],
     )).await?;
     if result.rows_affected() != 1 {
