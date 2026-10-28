@@ -13,6 +13,7 @@ pub struct Model {
     pub session_id: Uuid,
     pub redirect_uri: String,
     pub scope: String,
+    pub audience: Option<String>,
     pub nonce: String,
     pub code_challenge: String,
     pub created_at: DateTimeUtc,
