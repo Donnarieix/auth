@@ -159,9 +159,10 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
     // Only disclose the origin (never the sensitive authorization URL).
     // The origin check remains strict on /authorize/approve and /deny.
     let mut page = page;
-    page.0 = page
-        .0
-        .replace("name=\"referrer\" content=\"no-referrer\"", "name=\"referrer\" content=\"origin\"");
+    page.0 = page.0.replace(
+        "name=\"referrer\" content=\"no-referrer\"",
+        "name=\"referrer\" content=\"origin\"",
+    );
     (
         [
             (axum::http::header::CACHE_CONTROL, "no-store"),
