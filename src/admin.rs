@@ -117,7 +117,9 @@ async fn enroll_totp(
     }
     let encoded = admin_totp::encode_base32(&secret);
     println!("TOTP seed (shown once; store offline): {encoded}");
-    println!("Authenticator setup: otpauth://totp/DonnarieixAuth:{username}?secret={encoded}&issuer=DonnarieixAuth&algorithm=SHA256&digits=6&period=30");
+    println!(
+        "Authenticator setup: otpauth://totp/DonnarieixAuth:{username}?secret={encoded}&issuer=DonnarieixAuth&algorithm=SHA256&digits=6&period=30"
+    );
     Ok(())
 }
 
