@@ -124,8 +124,11 @@ pub async fn authorization_page(
         );
     }
     let fields = hidden_request(&request);
+    let resource_display = request.resource.as_deref().map(|resource| {
+        format!("<p>Protected API: <code>{}</code></p>", escape(resource))
+    }).unwrap_or_default();
     let details = format!(
-        "<p>Application: <strong>{}</strong></p><p>Requested permissions: <code>{}</code></p>",
+        "<p>Application: <strong>{}</strong></p><p>Requested permissions: <code>{}</code></p>{resource_display}",
         escape(&app.name),
         escape(&request.scope),
     );
