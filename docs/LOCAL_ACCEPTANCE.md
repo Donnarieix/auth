@@ -47,6 +47,24 @@ Cross-repository CI proof: `Donnarieix/auth-test-client` [PR #4](https://github.
 - [ ] Verify browser back button, cookies, inaccessible pages, error messages
       and accessibility without relying on the automated HTTP-only tests
 
+## Interface and usability
+
+- [ ] Visit `/account`: the login, registration, verification and recovery
+      panels are easy to locate, with clear success/error feedback
+- [ ] Sign in with a synthetic account, open `/account/profile`, edit the
+      display name and an HTTPS avatar URL, then reload and verify persistence
+- [ ] Check the avatar falls back to an initial if the remote image fails
+- [ ] Change the header theme between System, Light, Dark and Contrast;
+      reload each page and verify it persists locally
+- [ ] Navigate `/account/permissions`, `/developer`,
+      `/developer/new-client` and `/developer/manage-client`
+- [ ] Test narrow desktop/mobile viewport width and 200% zoom, keyboard-only
+      controls, visible focus and reduced-motion preference
+- [ ] Confirm that administrative secrets are shown only at creation or
+      rotation and are never inserted into URLs
+- [ ] Inspect the browser developer console for blocked CSS/JS requests and
+      any Content-Security-Policy errors
+
 ## Not claimed by the local acceptance
 
 Passing this checklist would validate the local development user experience.
