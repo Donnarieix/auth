@@ -81,14 +81,12 @@ pub async fn login(
         let last_step: i64 = row
             .try_get("", "totp_last_step")
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let provided = credentials.totp.as_deref().ok_or(StatusCode::UNAUTHORIZED)?;
-        let step = admin_totp::verify(
-            &secret,
-            provided,
-            chrono::Utc::now().timestamp(),
-            last_step,
-        )
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        let provided = credentials
+            .totp
+            .as_deref()
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        let step = admin_totp::verify(&secret, provided, chrono::Utc::now().timestamp(), last_step)
+            .ok_or(StatusCode::UNAUTHORIZED)?;
         let updated = state.db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE developer_administrators SET totp_last_step = ? WHERE id = ? AND totp_last_step < ?",
