@@ -142,6 +142,48 @@ async fn developer_browser_session_is_isolated_and_revocable() {
     )
     .await;
     assert_eq!(updated_redirect.status(), StatusCode::NO_CONTENT);
+
+    // A cross-origin request cannot update a registered callback, even with
+    // an otherwise valid administrator session cookie.
+    let cross_origin = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{client_id}/redirects"),
+        r#"{"redirect_uris":["http://127.0.0.1:44777/injected"]}"#.into(),
+        &[
+            ("origin", "http://evil.example"),
+            ("content-type", "application/json"),
+            ("cookie", session),
+        ],
+    )
+    .await;
+    assert_eq!(cross_origin.status(), StatusCode::FORBIDDEN);
+
+    // Reject unsafe callbacks and preserve the existing allowlist atomically.
+    let unsafe_redirect = call(
+        &app,
+        Method::POST,
+        &format!("/developer/clients/{client_id}/redirects"),
+        r#"{"redirect_uris":["https://evil.example/accepted","javascript:alert(1)"]}"#.into(),
+        &[
+            ("origin", "http://127.0.0.1:3000"),
+            ("content-type", "application/json"),
+            ("cookie", session),
+        ],
+    )
+    .await;
+    assert_eq!(unsafe_redirect.status(), StatusCode::BAD_REQUEST);
+    let existing_redirect = inspect_db
+        .query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT redirect_uri FROM client_redirect_uris WHERE client_id = (SELECT id FROM clients WHERE name = 'Desktop Test')",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let redirect: String = existing_redirect.try_get("", "redirect_uri").unwrap();
+    assert_eq!(redirect, "http://127.0.0.1:44999/return");
+
     let desktop_rotation = call(
         &app,
         Method::POST,
