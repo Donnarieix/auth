@@ -38,6 +38,6 @@ document.getElementById('disable').addEventListener('click',async()=>{
  const r=await fetch(endpoint('/disable'),{method:'POST',credentials:'same-origin'});
  status.textContent=r.ok?'Application disabled.':'Deactivation refused.';
 });
-</script></section>"####)
+</script></section>"####,
+    )
 }
-
