@@ -181,6 +181,29 @@ mod tests {
             code_challenge_method: "S256".into(),
         };
         assert_eq!(validate_authorization_request(&db, &request).await, Ok(()));
+        // An API audience is denied unless both the resource and this client
+        // are explicitly enrolled by the operator.
+        request.resource = Some("https://api.example.test".into());
+        assert_eq!(
+            validate_authorization_request(&db, &request).await,
+            Err(AuthorizationError::InvalidClient)
+        );
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        use uuid::Uuid;
+        let resource_id = Uuid::new_v4().to_string();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
+            [resource_id.clone().into(), "https://api.example.test".into(), "Example API".into(), vec![0u8;32].into()],
+        )).await.unwrap();
+        let owner = crate::services::client::get_client(&db, &client_id).await.unwrap().unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_client_resources(client_id,resource_id) VALUES(?,?)",
+            [owner.id.to_string().into(), resource_id.into()],
+        )).await.unwrap();
+        assert_eq!(validate_authorization_request(&db, &request).await, Ok(()));
+        request.resource = None;
 
         request.redirect_uri = "https://attacker.example/callback".into();
         assert_eq!(
