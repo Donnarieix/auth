@@ -49,7 +49,7 @@ pub async fn login(
     }
     if !state
         .abuse
-        .allow("developer_login", &credentials.username, 30, 5)
+        .allow("developer_login", &credentials.username.to_ascii_lowercase(), 30, 5)
         .await
     {
         return Err(StatusCode::TOO_MANY_REQUESTS);
