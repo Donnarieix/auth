@@ -173,6 +173,12 @@ const ADMIN_TOTP_SCHEMA: &[&str] = &[
     "ALTER TABLE developer_administrators ADD COLUMN totp_last_step INTEGER NOT NULL DEFAULT -1",
 ];
 
+const ADMIN_ENROLLMENT_REVOCATION_SCHEMA: &[&str] =
+    &[r#"CREATE TRIGGER developer_totp_enrollment_revokes_sessions
+        AFTER UPDATE OF totp_secret ON developer_administrators
+        FOR EACH ROW WHEN OLD.totp_secret IS NULL AND NEW.totp_secret IS NOT NULL
+        BEGIN UPDATE developer_sessions SET revoked = 1 WHERE administrator_id = NEW.id; END"#];
+
 fn statement(sql: &str) -> Statement {
     Statement::from_string(DbBackend::Sqlite, sql.to_owned())
 }
@@ -187,7 +193,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 11 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 12 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -381,6 +387,22 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
         tx.execute_raw(statement(
             "INSERT INTO schema_migrations (version) VALUES (11)",
+        ))
+        .await?;
+    }
+
+    let has_v12 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 12",
+        ))
+        .await?
+        .is_some();
+    if !has_v12 {
+        for sql in ADMIN_ENROLLMENT_REVOCATION_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (12)",
         ))
         .await?;
     }
