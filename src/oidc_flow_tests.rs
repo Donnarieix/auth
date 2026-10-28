@@ -222,6 +222,38 @@ async fn confidential_web_client_requires_secret_and_pkce() {
     )
     .await;
     assert_eq!(success.status(), StatusCode::OK);
+    let issued: serde_json::Value =
+        serde_json::from_slice(&to_bytes(success.into_body(), 100_000).await.unwrap()).unwrap();
+    let access = issued["access_token"].as_str().unwrap();
+    let introspection_form = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("token", access)
+        .finish();
+    let check = request(
+        &app,
+        Method::POST,
+        "/introspect",
+        introspection_form.clone(),
+        &[
+            ("content-type", "application/x-www-form-urlencoded"),
+            ("authorization", &format!("Basic {basic}")),
+        ],
+    ).await;
+    assert_eq!(check.status(), StatusCode::OK);
+    let status: serde_json::Value =
+        serde_json::from_slice(&to_bytes(check.into_body(), 100_000).await.unwrap()).unwrap();
+    assert_eq!(status["active"], true);
+    assert_eq!(status["client_id"], client);
+    assert_eq!(status["token_type"], "Bearer");
+
+    let forbidden = request(
+        &app,
+        Method::POST,
+        "/introspect",
+        introspection_form,
+        &[("content-type", "application/x-www-form-urlencoded")],
+    ).await;
+    assert_eq!(forbidden.status(), StatusCode::UNAUTHORIZED);
+
     let replay = request(
         &app,
         Method::POST,
