@@ -53,7 +53,7 @@ commit it. Then restart the server and sign into the separate developer
 console with the administrator credential **and**, after enrollment, a
 six-digit authenticator code. The same time-step code cannot be reused.
 Enrollment is optional for existing development administrators, but should
-be completed before testing privileged flows. For credential recovery, the trusted local CLI offers `cargo run -- admin token rotate operator`, which revokes prior developer browser sessions.
+be completed before testing privileged flows. For credential recovery, the trusted local CLI offers `cargo run -- admin token rotate operator`, which revokes prior developer browser sessions. If the authenticator seed is lost, a trusted operator with **local database access** can run `cargo run -- admin totp reset operator` while the service is stopped; this clears the second factor, revokes every developer session and records an audit event. Re-enroll with `admin totp enroll` immediately afterwards. Browser endpoints never offer this recovery mechanism.
 
 Registered desktop client callbacks may use the exact loopback HTTP URI with a fixed port; web client callbacks require HTTPS. Web clients additionally require a secret, which can be created in the developer console with administrator reauthentication or using `cargo run -- client secret rotate <client-id>` with the server stopped. Never put the web client secret in browser JavaScript.
 
