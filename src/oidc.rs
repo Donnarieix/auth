@@ -5,6 +5,7 @@ pub mod authorization;
 pub mod consent;
 pub mod discovery;
 pub mod grants;
+pub mod introspection;
 pub mod signing;
 pub mod token;
 
