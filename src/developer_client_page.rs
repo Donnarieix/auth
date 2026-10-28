@@ -1,43 +1,16 @@
 use axum::response::Html;
 
 pub async fn page() -> Html<String> {
-    crate::ui::render(
-        "Gérer une application",
-        "/developer",
-        r####"<div class="page-heading"><div class="eyebrow">Console développeur</div><h1>Gérer une application</h1><p class="lead">Configurez précisément votre intégration et gardez la maîtrise de ses accès.</p></div><section class="panel" style="max-width:790px"><main><h1>OIDC Client Management</h1><a href="/developer">Developer console</a><label>Client ID <input id="client_id"></label><button id="load">Load current callbacks</button><label>Redirect URIs <textarea id="redirects"></textarea></label><button id="save">Save redirects</button><label>Developer credential <input type="password" id="admin_token" autocomplete="off"></label><button id="rotate">Rotate confidential secret</button><pre id="secret"></pre><label><input type="checkbox" id="confirm_disable"> I understand that disabling this application invalidates grants</label><button id="disable">Disable application</button><p id="status" role="status"></p></main><script>
-const id=document.getElementById('client_id');
-const status=document.getElementById('status');
-id.value=new URLSearchParams(location.search).get('client_id')||'';
-const endpoint=suffix=>'/developer/clients/'+encodeURIComponent(id.value.trim())+suffix;
-document.getElementById('load').addEventListener('click',async()=>{
- const r=await fetch('/developer/clients',{credentials:'same-origin'});
- if(!r.ok){status.textContent='Developer login required.';return;}
- const client=(await r.json()).find(v=>v.client_id===id.value.trim());
- if(!client){status.textContent='Client not found.';return;}
- document.getElementById('redirects').value=client.redirect_uris.join('\\n');
- status.textContent=client.name+' — '+client.client_type+' — '+(client.active?'active':'disabled');
-});
-document.getElementById('save').addEventListener('click',async()=>{
- const uris=document.getElementById('redirects').value.split('\\n').map(v=>v.trim()).filter(Boolean);
- const r=await fetch(endpoint('/redirects'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({redirect_uris:uris})});
- status.textContent=r.ok?'Redirect URIs saved.':'Redirect update refused.';
-});
-document.getElementById('rotate').addEventListener('click',async()=>{
- const field=document.getElementById('admin_token');
- const administrator_token=field.value;
- field.value='';
- const display=document.getElementById('secret');
- display.textContent='';
- const r=await fetch(endpoint('/secret'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({administrator_token})});
- if(!r.ok){status.textContent='Credential rejected or web client unavailable.';return;}
- display.textContent=(await r.json()).client_secret;
- status.textContent='Secret rotated. Store it in your backend now; it will not be shown again.';
-});
-document.getElementById('disable').addEventListener('click',async()=>{
- if(!document.getElementById('confirm_disable').checked){status.textContent='Confirm deactivation first.';return;}
- const r=await fetch(endpoint('/disable'),{method:'POST',credentials:'same-origin'});
- status.textContent=r.ok?'Application disabled.':'Deactivation refused.';
-});
-</script></section>"####,
-    )
+    crate::ui::render("Gérer une application", "/developer", r####"<div class="page-heading"><div class="eyebrow">Paramètres de l'application</div><h1>Gérer une application</h1><p class="lead">Gardez des adresses de retour précises et révoquez les accès dont vous n'avez plus besoin.</p></div><div class="columns"><section class="panel"><label>Identifiant du client<input id="client_id" class="mono" autocomplete="off" spellcheck="false"></label><button class="secondary" type="button" id="load" style="margin-top:12px">Charger la configuration</button><div id="client-content" hidden><hr style="border:0;border-top:1px solid var(--line);margin:27px 0"><h2>Adresses de retour</h2><p class="muted">Autorisez uniquement les adresses exactes utilisées par votre application.</p><label>URI autorisées<textarea id="redirects" spellcheck="false"></textarea></label><button type="button" id="save" style="margin-top:14px">Enregistrer les adresses</button><hr style="border:0;border-top:1px solid var(--line);margin:27px 0"><h2>Secret du client web</h2><p class="muted">Un nouveau secret invalide l'ancien. Ne le copiez jamais dans du JavaScript exécuté par les utilisateurs.</p><label>Clé administrateur<input type="password" id="admin_token" autocomplete="off"></label><button type="button" class="secondary" id="rotate" style="margin-top:14px">Générer un nouveau secret</button><div class="notice" id="secret-result" hidden><strong>Enregistrez ce secret maintenant.</strong><p class="mono" id="secret"></p><button type="button" class="secondary" id="copy-secret">Copier</button></div><hr style="border:0;border-top:1px solid var(--line);margin:27px 0"><h2>Désactiver l'application</h2><p class="muted">Cette opération bloque les futures connexions et l'utilisation des jetons de cette application.</p><label><input type="checkbox" id="confirm_disable"> Je confirme vouloir désactiver cette application.</label><button type="button" class="danger" id="disable" style="margin-top:14px">Désactiver l'application</button></div><p class="status" id="status" role="status" aria-live="polite"></p></section><aside class="panel"><h2>Quelques bonnes pratiques</h2><p class="muted">Une URL de retour erronée empêche l'application de recevoir le code d'autorisation. Une URL trop permissive est un risque de sécurité.</p><p class="muted">La désactivation n'efface pas l'historique d'audit.</p><a href="/developer">Revenir à la console</a></aside></div><script>
+const id=document.getElementById('client_id'),status=document.getElementById('status'),content=document.getElementById('client-content');id.value=new URLSearchParams(location.search).get('client_id')||'';
+const endpoint=s=>'/developer/clients/'+encodeURIComponent(id.value.trim())+s;
+function notify(message,error=false){status.textContent=message;status.dataset.error=String(error);}
+async function load(){try{const r=await fetch('/developer/clients',{credentials:'same-origin'});if(!r.ok){notify('Connectez-vous à la console développeur.',true);return;}const app=(await r.json()).find(v=>v.client_id===id.value.trim());if(!app){notify('Application introuvable.',true);return;}content.hidden=false;document.getElementById('redirects').value=(app.redirect_uris||[]).join('\n');document.getElementById('rotate').disabled=app.client_type!=='web'||!app.active;document.getElementById('save').disabled=!app.active;document.getElementById('disable').disabled=!app.active;notify(app.name+' · '+(app.active?'Active':'Désactivée'));}catch{notify('Impossible de charger les données.',true);}}
+document.getElementById('load').addEventListener('click',load);
+document.getElementById('save').addEventListener('click',async()=>{const uris=document.getElementById('redirects').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);const r=await fetch(endpoint('/redirects'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({redirect_uris:uris})});notify(r.ok?'Adresses enregistrées.':'Modification refusée.',!r.ok);});
+document.getElementById('rotate').addEventListener('click',async()=>{const field=document.getElementById('admin_token'),administrator_token=field.value;field.value='';document.getElementById('secret').textContent='';document.getElementById('secret-result').hidden=true;const r=await fetch(endpoint('/secret'),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({administrator_token})});if(!r.ok){notify('Clé refusée ou client web indisponible.',true);return;}document.getElementById('secret').textContent=(await r.json()).client_secret;document.getElementById('secret-result').hidden=false;notify('Nouveau secret généré.');});
+document.getElementById('copy-secret').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(document.getElementById('secret').textContent);notify('Secret copié.');}catch{notify('Copie impossible, sélectionnez le texte.',true);}});
+document.getElementById('disable').addEventListener('click',async()=>{if(!document.getElementById('confirm_disable').checked){notify('Confirmez la désactivation.',true);return;}if(!confirm('Désactiver définitivement cette application ?'))return;const r=await fetch(endpoint('/disable'),{method:'POST',credentials:'same-origin'});notify(r.ok?'Application désactivée.':'Désactivation refusée.',!r.ok);if(r.ok)load();});
+if(id.value)load();
+</script>"####)
 }
