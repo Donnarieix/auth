@@ -249,7 +249,9 @@ async fn complete_code_pkce_consent_jwks_userinfo_and_replay_protection() {
     )
     .await;
     assert_eq!(page.status(), StatusCode::OK);
-    let csp = page.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    let csp = page.headers()[header::CONTENT_SECURITY_POLICY]
+        .to_str()
+        .unwrap();
     assert!(csp.contains("form-action 'self' http://127.0.0.1:4000;"));
     assert!(csp.contains("frame-ancestors 'none'"));
     let html = to_bytes(page.into_body(), 100_000).await.unwrap();
