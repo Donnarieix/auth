@@ -157,7 +157,9 @@ async fn reset_totp(
     ))
     .await?;
     tx.commit().await?;
-    println!("Second factor reset locally. All developer sessions revoked. Re-enroll TOTP before using privileged operations.");
+    println!(
+        "Second factor reset locally. All developer sessions revoked. Re-enroll TOTP before using privileged operations."
+    );
     Ok(())
 }
 
