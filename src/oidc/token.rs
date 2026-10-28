@@ -63,7 +63,7 @@ fn invalid_request() -> (StatusCode, Json<OAuthError>) {
 
 /// Accepts public PKCE clients without credentials and web clients
 /// only with a separately configured confidential client secret over HTTP Basic.
-fn valid_web_client_secret(headers: &HeaderMap, id: &str, hash: &[u8]) -> bool {
+pub(super) fn valid_web_client_secret(headers: &HeaderMap, id: &str, hash: &[u8]) -> bool {
     let Some(encoded) = headers
         .get(header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
