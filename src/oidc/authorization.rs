@@ -178,8 +178,14 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
     };
     (
         [
-            (axum::http::header::CACHE_CONTROL, axum::http::HeaderValue::from_static("no-store")),
-            (axum::http::header::REFERRER_POLICY, axum::http::HeaderValue::from_static("origin")),
+            (
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-store"),
+            ),
+            (
+                axum::http::header::REFERRER_POLICY,
+                axum::http::HeaderValue::from_static("origin"),
+            ),
             (axum::http::header::CONTENT_SECURITY_POLICY, policy),
         ],
         page,
