@@ -4,7 +4,7 @@ use axum::{
     Form,
     extract::{Query, State},
     http::StatusCode,
-    response::{Html, IntoResponse, Redirect, Response},
+    response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::CookieJar;
 use sea_orm::ModelTrait;
