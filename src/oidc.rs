@@ -10,7 +10,7 @@ pub mod signing;
 pub mod token;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use sea_orm::{DatabaseConnection, DbErr};
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -22,6 +22,8 @@ pub struct AuthorizationRequest {
     pub client_id: String,
     pub redirect_uri: String,
     pub scope: String,
+    #[serde(default)]
+    pub resource: Option<String>,
     pub state: String,
     pub nonce: String,
     pub code_challenge: String,
@@ -79,6 +81,15 @@ pub async fn validate_authorization_request(
     // Never redirect protocol errors to an unvalidated URI.
     if !is_redirect_uri_allowed(db, &app, &request.redirect_uri).await? {
         return Err(AuthorizationError::InvalidRedirect);
+    }
+    if let Some(resource) = &request.resource {
+        if resource.len() > 256 { return Err(AuthorizationError::InvalidClient); }
+        let allowed = db.query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = ? AND r.audience = ? AND r.active = 1",
+            [app.id.to_string().into(), resource.clone().into()],
+        )).await?;
+        if allowed.is_none() { return Err(AuthorizationError::InvalidClient); }
     }
     if request.response_type != "code" {
         return Err(AuthorizationError::UnsupportedResponseType);
@@ -163,6 +174,7 @@ mod tests {
             client_id: client_id.clone(),
             redirect_uri: redirect,
             scope: "openid profile email".into(),
+            resource: None,
             state: "opaque_state_123456789".into(),
             nonce: "opaque_nonce_123456789".into(),
             code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM".into(),
