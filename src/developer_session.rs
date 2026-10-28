@@ -65,7 +65,7 @@ pub async fn login(
         .db
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT id, totp_secret, totp_last_step FROM developer_administrators WHERE username = ? AND token_hash = ? AND active = 1",
+            "SELECT id, totp_secret, totp_last_step, totp_required FROM developer_administrators WHERE username = ? AND token_hash = ? AND active = 1",
             [credentials.username.into(), digest.into()],
         ))
         .await
@@ -77,6 +77,12 @@ pub async fn login(
     let totp_secret: Option<Vec<u8>> = row
         .try_get("", "totp_secret")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let totp_required: bool = row
+        .try_get("", "totp_required")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if totp_required && totp_secret.is_none() {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
     if let Some(secret) = totp_secret {
         let last_step: i64 = row
             .try_get("", "totp_last_step")
