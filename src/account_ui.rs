@@ -3,76 +3,10 @@
 //! server-side, and never places recovery tokens in URLs.
 use axum::response::Html;
 
-pub async fn page() -> Html<&'static str> {
-    Html(
-        r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"><meta name="referrer" content="no-referrer">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Donnarieix Auth — Account</title>
-</head>
-<body>
-<main>
-<h1>Donnarieix Auth</h1>
-<p>Create and verify an account before signing in through your OIDC application.</p>
-<section>
-<h2>Create account</h2>
-<form data-path="/register">
-<label>Email <input type="email" name="email" required autocomplete="email"></label>
-<label>Username <input name="username" required autocomplete="username"></label>
-<label>Password <input type="password" name="password" required autocomplete="new-password"></label>
-<button>Create account</button>
-</form>
-</section>
-<section>
-<h2>Verify email</h2>
-<p>Check your mail. During loopback development, messages are in data/outbox.</p>
-<form data-path="/email/verification/confirm">
-<label>Verification code <input name="token" required autocomplete="off"></label>
-<button>Verify</button>
-</form>
-<form data-path="/email/verification/request">
-<label>Email <input type="email" name="email" required></label>
-<button>Resend code</button>
-</form>
-</section>
-<section>
-<h2>Forgot password</h2>
-<form data-path="/password/reset/request">
-<label>Email <input type="email" name="email" required></label>
-<button>Request password reset</button>
-</form>
-<form data-path="/password/reset/confirm">
-<label>Reset code <input name="token" required autocomplete="off"></label>
-<label>New password <input type="password" name="new_password" required autocomplete="new-password"></label>
-<button>Reset password</button>
-</form>
-</section>
-<p id="status" role="status" aria-live="polite"></p>
-</main>
-<script>
-const status = document.getElementById('status');
-document.querySelectorAll('form[data-path]').forEach(form => {
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const payload=Object.fromEntries(new FormData(form));
-    try {
-      const response=await fetch(form.dataset.path,{
-        method:'POST',credentials:'same-origin',
-        headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
-      });
-      status.textContent=response.ok
-        ? 'Request accepted. Check your mail or local development outbox if a code is needed.'
-        : 'Request rejected. Verify the submitted information and try again.';
-      if (response.ok) form.reset();
-    } catch (_) {
-      status.textContent='Unable to reach the authentication service.';
-    }
-  });
-});
-</script>
-</body>
-</html>"#,
-    )
+pub async fn page() -> Html<String> {
+    crate::ui::render("Compte", "/account", r####"<div class="page-heading"><div class="eyebrow">Votre identité</div><h1>Un compte, plusieurs applications.</h1><p class="lead">Créez votre identité, vérifiez votre adresse et gardez la maîtrise de vos accès. Rien de compliqué, seulement l'essentiel.</p></div><div class="columns"><section class="panel"><div class="segmented" role="tablist" aria-label="Gestion du compte"><button type="button" role="tab" aria-selected="true" data-tab="signup">Créer un compte</button><button type="button" role="tab" aria-selected="false" data-tab="verify">Vérifier</button><button type="button" role="tab" aria-selected="false" data-tab="recover">Récupérer</button></div><div class="view" data-view="signup"><h2>Créer mon compte</h2><form data-path="/register"><label>Adresse email<input type="email" name="email" required autocomplete="email" placeholder="vous@exemple.fr"></label><label>Identifiant<input name="username" required autocomplete="username" placeholder="Votre identifiant"></label><label>Mot de passe<input type="password" name="password" required autocomplete="new-password" minlength="12" placeholder="Au moins 12 caractères"></label><button type="submit">Créer mon compte</button></form></div><div class="view" data-view="verify" hidden><h2>Vérifier mon adresse email</h2><p class="muted">Le code reçu est à usage unique. En développement local, consultez <span class="mono">data/outbox</span>.</p><form data-path="/email/verification/confirm"><label>Code de vérification<input name="token" required autocomplete="off"></label><button type="submit">Confirmer mon adresse</button></form><details style="margin-top:22px"><summary>Je n'ai pas reçu de code</summary><form style="margin-top:14px" data-path="/email/verification/request"><label>Adresse email<input type="email" name="email" required></label><button type="submit" class="secondary">Renvoyer un code</button></form></details></div><div class="view" data-view="recover" hidden><h2>Retrouver l'accès</h2><p class="muted">Demandez un code pour définir un nouveau mot de passe.</p><form data-path="/password/reset/request"><label>Adresse email<input type="email" name="email" required></label><button type="submit">Recevoir un code</button></form><details style="margin-top:22px"><summary>J'ai déjà mon code</summary><form data-path="/password/reset/confirm" style="margin-top:14px"><label>Code de récupération<input name="token" required autocomplete="off"></label><label>Nouveau mot de passe<input type="password" name="new_password" required autocomplete="new-password" minlength="12"></label><button type="submit">Mettre à jour le mot de passe</button></form></details></div><p class="status" id="status" role="status" aria-live="polite"></p></section><aside class="stack"><section class="panel"><div class="eyebrow">Déjà inscrit ?</div><h2>Votre espace personnel</h2><p class="muted">Retrouvez vos informations, les applications auxquelles vous avez accordé l'accès et vos préférences.</p><a class="button secondary" href="/account/profile">Accéder à mon compte</a></section><section class="panel"><h2>La confidentialité d'abord.</h2><p class="muted">Chaque application demande votre consentement. Vous pouvez retirer ses autorisations à tout moment.</p><a href="/account/permissions">Gérer mes applications liées</a></section></aside></div><script>
+const status=document.getElementById('status');
+document.querySelectorAll('[data-tab]').forEach(tab=>tab.addEventListener('click',()=>{document.querySelectorAll('[data-tab]').forEach(t=>t.setAttribute('aria-selected',String(t===tab)));document.querySelectorAll('[data-view]').forEach(view=>view.hidden=view.dataset.view!==tab.dataset.tab);status.textContent='';}));
+document.querySelectorAll('form[data-path]').forEach(form=>form.addEventListener('submit',async e=>{e.preventDefault();const button=form.querySelector('button[type=submit]');button.disabled=true;status.textContent='Envoi en cours…';status.dataset.error='false';try{const res=await fetch(form.dataset.path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(form)))});status.textContent=res.ok?'Demande reçue. Si un code est nécessaire, consultez votre messagerie (ou data/outbox en local).':'Impossible de traiter la demande. Vérifiez les champs et réessayez.';status.dataset.error=String(!res.ok);if(res.ok){form.reset();if(form.dataset.path==='/register'){document.querySelector('[data-tab="verify"]').click();status.textContent='Compte créé. Vérifiez maintenant votre adresse email.';}}}catch{status.textContent='Serveur injoignable.';status.dataset.error='true';}finally{button.disabled=false;}}));
+</script>"####)
 }
