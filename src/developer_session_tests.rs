@@ -362,12 +362,19 @@ async fn developer_login_throttling_cannot_be_bypassed_by_username_case() {
         ("content-type", "application/json"),
     ];
     for attempt in 0..6 {
-        let username = if attempt % 2 == 0 { "Operator" } else { "operator" };
+        let username = if attempt % 2 == 0 {
+            "Operator"
+        } else {
+            "operator"
+        };
         let response = call(
             &app,
             Method::POST,
             "/developer/login",
-            format!(r#"{{"username":"{username}","token":"{}"}}"#, "X".repeat(43)),
+            format!(
+                r#"{{"username":"{username}","token":"{}"}}"#,
+                "X".repeat(43)
+            ),
             &headers,
         )
         .await;
