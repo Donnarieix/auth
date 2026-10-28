@@ -52,8 +52,11 @@ fn checked_profile(mut patch: UpdateProfile) -> Result<UpdateProfile, StatusCode
     }
     if let Some(uri) = patch.avatar_url.as_deref().filter(|uri| !uri.is_empty()) {
         let parsed = url::Url::parse(uri).map_err(|_| StatusCode::BAD_REQUEST)?;
-        if parsed.scheme() != "https" || parsed.username() != "" || parsed.password().is_some()
-            || parsed.host_str().is_none() || parsed.fragment().is_some()
+        if parsed.scheme() != "https"
+            || parsed.username() != ""
+            || parsed.password().is_some()
+            || parsed.host_str().is_none()
+            || parsed.fragment().is_some()
         {
             return Err(StatusCode::BAD_REQUEST);
         }
