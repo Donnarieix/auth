@@ -267,10 +267,13 @@ mod tests {
         assert!(secret.is_none());
         assert_eq!(step, -1);
         assert!(revoked);
-        let event = db.query_one_raw(Statement::from_string(
-            DbBackend::Sqlite,
-            "SELECT id FROM developer_admin_events WHERE event_type = 'totp_reset'",
-        )).await.unwrap();
+        let event = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT id FROM developer_admin_events WHERE event_type = 'totp_reset'",
+            ))
+            .await
+            .unwrap();
         assert!(event.is_some());
         assert!(reset_totp(&db, "operator").await.is_err());
     }
