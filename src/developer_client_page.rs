@@ -1,8 +1,7 @@
 use axum::response::Html;
 
-pub async fn page() -> Html<&'static str> {
-    Html(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Manage OIDC client</title></head><body><main><h1>OIDC Client Management</h1><a href="/developer">Developer console</a><label>Client ID <input id="client_id"></label><button id="load">Load current callbacks</button><label>Redirect URIs <textarea id="redirects"></textarea></label><button id="save">Save redirects</button><label>Developer credential <input type="password" id="admin_token" autocomplete="off"></label><button id="rotate">Rotate confidential secret</button><pre id="secret"></pre><label><input type="checkbox" id="confirm_disable"> I understand that disabling this application invalidates grants</label><button id="disable">Disable application</button><p id="status" role="status"></p></main><script>
+pub async fn page() -> Html<String> {
+    crate::ui::render("Gérer une application", "/developer", r####"<div class="page-heading"><div class="eyebrow">Console développeur</div><h1>Gérer une application</h1><p class="lead">Configurez précisément votre intégration et gardez la maîtrise de ses accès.</p></div><section class="panel" style="max-width:790px"><main><h1>OIDC Client Management</h1><a href="/developer">Developer console</a><label>Client ID <input id="client_id"></label><button id="load">Load current callbacks</button><label>Redirect URIs <textarea id="redirects"></textarea></label><button id="save">Save redirects</button><label>Developer credential <input type="password" id="admin_token" autocomplete="off"></label><button id="rotate">Rotate confidential secret</button><pre id="secret"></pre><label><input type="checkbox" id="confirm_disable"> I understand that disabling this application invalidates grants</label><button id="disable">Disable application</button><p id="status" role="status"></p></main><script>
 const id=document.getElementById('client_id');
 const status=document.getElementById('status');
 id.value=new URLSearchParams(location.search).get('client_id')||'';
@@ -36,6 +35,6 @@ document.getElementById('disable').addEventListener('click',async()=>{
  const r=await fetch(endpoint('/disable'),{method:'POST',credentials:'same-origin'});
  status.textContent=r.ok?'Application disabled.':'Deactivation refused.';
 });
-</script></body></html>"#,
-    )
+</script></section>"####)
 }
+
