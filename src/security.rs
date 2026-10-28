@@ -86,7 +86,7 @@ impl SecurityConfig {
     }
 }
 
-const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 fn attach_security_headers(response: &mut Response, secure: bool) {
     let headers = response.headers_mut();
@@ -117,8 +117,9 @@ fn attach_security_headers(response: &mut Response, secure: bool) {
 }
 
 /// Apply defense-in-depth browser headers to every response, including errors.
-/// Inline JavaScript is currently used by the sign-in prototype; replace it
-/// with nonce-based scripts before claiming production-grade CSP hardening.
+/// The current local web UI embeds its script and CSS. This CSP is a staging
+/// compromise: extract static assets and use nonce-/hash-based scripts and
+/// styles before claiming production-grade CSP hardening.
 pub async fn security_response_headers(
     State(state): State<AppState>,
     request: Request,
@@ -198,6 +199,12 @@ mod tests {
                 .to_str()
                 .unwrap()
                 .contains("frame-ancestors 'none'")
+        );
+        assert!(
+            response.headers()["content-security-policy"]
+                .to_str()
+                .unwrap()
+                .contains("style-src 'unsafe-inline'")
         );
     }
 
