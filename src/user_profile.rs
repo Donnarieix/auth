@@ -39,8 +39,14 @@ pub struct UpdateProfile {
 fn checked_profile(mut patch: UpdateProfile) -> Result<UpdateProfile, StatusCode> {
     patch.display_name = patch.display_name.map(|name| name.trim().to_owned());
     patch.avatar_url = patch.avatar_url.map(|uri| uri.trim().to_owned());
-    if patch.display_name.as_deref().is_some_and(|v| v.chars().count() > 64 || v.chars().any(char::is_control))
-        || patch.avatar_url.as_deref().is_some_and(|v| v.len() > 512 || v.chars().any(char::is_control))
+    if patch
+        .display_name
+        .as_deref()
+        .is_some_and(|v| v.chars().count() > 64 || v.chars().any(char::is_control))
+        || patch
+            .avatar_url
+            .as_deref()
+            .is_some_and(|v| v.len() > 512 || v.chars().any(char::is_control))
     {
         return Err(StatusCode::BAD_REQUEST);
     }
