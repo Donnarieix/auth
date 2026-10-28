@@ -182,10 +182,9 @@ mod tests {
     #[test]
     fn explicitly_scoped_consent_referrer_policy_is_preserved() {
         let mut response = Response::new(Body::empty());
-        response.headers_mut().insert(
-            header::REFERRER_POLICY,
-            "origin".parse().unwrap(),
-        );
+        response
+            .headers_mut()
+            .insert(header::REFERRER_POLICY, "origin".parse().unwrap());
         attach_security_headers(&mut response, false);
         assert_eq!(response.headers()[header::REFERRER_POLICY], "origin");
 
