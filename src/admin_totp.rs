@@ -62,12 +62,9 @@ pub fn verify(secret: &[u8], supplied: &str, unix_seconds: i64, last_step: i64) 
     }
     let supplied: u32 = supplied.parse().ok()?;
     let current = unix_seconds.checked_div(30)?;
-    for step in [current - 1, current, current + 1] {
-        if step >= 0 && step > last_step && code(secret, step as u64) == supplied {
-            return Some(step);
-        }
-    }
-    None
+    [current - 1, current, current + 1]
+        .into_iter()
+        .find(|&step| step >= 0 && step > last_step && code(secret, step as u64) == supplied)
 }
 
 #[cfg(test)]
