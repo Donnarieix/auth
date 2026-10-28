@@ -75,7 +75,8 @@ document.getElementById('client').addEventListener('submit', async e => {
  const client=await result.json();
  status.textContent='Created client ID: '+client.client_id+'. Save this ID. Web clients also require a confidential secret from the trusted operator CLI.';
 });
-</script></section>"####)
+</script></section>"####,
+    )
 }
 
 #[derive(Serialize)]
