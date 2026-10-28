@@ -97,9 +97,27 @@ mod tests {
     use super::{UpdateProfile, checked_profile};
     #[test]
     fn profile_fields_are_bounded_and_https_only() {
-        assert!(checked_profile(UpdateProfile {display_name:Some("  Camille  ".into()),avatar_url:Some("https://example.com/p.png".into())}).is_ok());
-        assert!(checked_profile(UpdateProfile {display_name:Some("a".repeat(65)),avatar_url:None}).is_err());
-        assert!(checked_profile(UpdateProfile {display_name:None,avatar_url:Some("javascript:alert(1)".into())}).is_err());
+        assert!(
+            checked_profile(UpdateProfile {
+                display_name: Some("  Camille  ".into()),
+                avatar_url: Some("https://example.com/p.png".into())
+            })
+            .is_ok()
+        );
+        assert!(
+            checked_profile(UpdateProfile {
+                display_name: Some("a".repeat(65)),
+                avatar_url: None
+            })
+            .is_err()
+        );
+        assert!(
+            checked_profile(UpdateProfile {
+                display_name: None,
+                avatar_url: Some("javascript:alert(1)".into())
+            })
+            .is_err()
+        );
         assert!(
             checked_profile(UpdateProfile {
                 display_name: None,
