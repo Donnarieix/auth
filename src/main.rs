@@ -10,6 +10,7 @@ use crate::{
     middleware::auth,
     oidc::authorization::{approve, authorization_page, deny},
     oidc::discovery::discovery,
+    oidc::introspection::introspect,
     oidc::signing::jwks,
     oidc::token::{token, userinfo},
     routes::account::{confirm_reset, confirm_verification, request_reset, request_verification},
@@ -109,6 +110,7 @@ fn router(state: AppState) -> Router {
             .route("/authorize/approve", post(approve))
             .route("/authorize/deny", post(deny))
             .route("/token", post(token))
+            .route("/introspect", post(introspect))
             .route("/userinfo", get(userinfo));
     }
     // Apply security layers AFTER adding conditional OIDC routes; otherwise
