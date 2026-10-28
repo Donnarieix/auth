@@ -56,7 +56,10 @@ mod session_tests;
 fn router(state: AppState) -> Router {
     let protected = Router::new()
         .route("/me", get(me))
-        .route("/account/profile/data", get(user_profile::show).post(user_profile::update))
+        .route(
+            "/account/profile/data",
+            get(user_profile::show).post(user_profile::update),
+        )
         .route("/logout", post(logout))
         .route("/account/consents", get(user_consents::list))
         .route(
