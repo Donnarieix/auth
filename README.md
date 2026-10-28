@@ -242,3 +242,28 @@ administrator bootstrap, and the browser account/developer screens.
 
 This is a **local release candidate**, not a production deployment. Do not
 put live credentials or private signing keys into Git.
+
+## Optional developer-admin TOTP (local enrollment)
+
+The developer administrator may enroll a second factor using the trusted
+local CLI after the account has been bootstrapped:
+
+```sh
+cargo run -- admin totp enroll operator
+```
+
+Enrollment generates an independent 256-bit TOTP seed and displays its
+Base32 value and an `otpauth://` provisioning URI **once**. Configure an
+authenticator app supporting SHA256, six digits and a 30-second period, and
+store a secure backup outside the repository. Once enrolled, browser login
+requires both the administrator credential and the authenticator code.
+The server tolerates one adjacent time interval but rejects a counter that
+has already been consumed. Synchronize the workstation clock.
+
+This is opt-in for existing local administrator accounts; it must be
+enabled before trusting the developer interface in a sensitive environment.
+The seed is currently stored as a restricted SQLite BLOB, not protected by
+a dedicated hardware-backed key manager. There is no remote reset or
+automatic second-factor recovery. Loss of the authenticator requires a
+controlled local operator procedure; no bypass is available from the browser.
+This is not an independent security assessment or production certification.

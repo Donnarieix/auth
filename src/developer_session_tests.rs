@@ -388,3 +388,61 @@ async fn developer_login_throttling_cannot_be_bypassed_by_username_case() {
         );
     }
 }
+
+#[tokio::test]
+async fn enrolled_totp_blocks_single_factor_login_and_replay() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    schema::apply(&db).await.unwrap();
+    let token = "T".repeat(43);
+    let secret = b"12345678901234567890123456789012";
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_administrators (id, username, token_hash, created_at, active, totp_secret) VALUES (?, ?, ?, ?, 1, ?)",
+        [
+            Uuid::new_v4().to_string().into(),
+            "mfaoperator".to_owned().into(),
+            Sha256::digest(token.as_bytes()).to_vec().into(),
+            chrono::Utc::now().to_rfc3339().into(),
+            secret.to_vec().into(),
+        ],
+    ))
+    .await
+    .unwrap();
+    let app = router(AppState::with_db(db));
+    let headers = [
+        ("origin", "http://127.0.0.1:3000"),
+        ("content-type", "application/json"),
+    ];
+    let no_second_factor = call(
+        &app,
+        Method::POST,
+        "/developer/login",
+        format!(r#"{{"username":"mfaoperator","token":"{token}"}}"#),
+        &headers,
+    )
+    .await;
+    assert_eq!(no_second_factor.status(), StatusCode::UNAUTHORIZED);
+    let wrong = call(
+        &app,
+        Method::POST,
+        "/developer/login",
+        format!(r#"{{"username":"mfaoperator","token":"{token}","totp":"invalid"}}"#),
+        &headers,
+    )
+    .await;
+    assert_eq!(wrong.status(), StatusCode::UNAUTHORIZED);
+    let now_step = chrono::Utc::now().timestamp() / 30;
+    let totp = format!("{:06}", crate::admin_totp::code(secret, now_step as u64));
+    let payload = format!(r#"{{"username":"mfaoperator","token":"{token}","totp":"{totp}"}}"#);
+    let accepted = call(
+        &app,
+        Method::POST,
+        "/developer/login",
+        payload.clone(),
+        &headers,
+    )
+    .await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let replay = call(&app, Method::POST, "/developer/login", payload, &headers).await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+}

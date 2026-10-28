@@ -7,6 +7,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
+    admin_totp,
     entities::{client, client_redirect_uri},
     schema,
     services::{
@@ -97,9 +98,39 @@ async fn rotate_administrator_token(
     Ok(())
 }
 
+/// Explicit local enrollment: secret is shown once in a trusted terminal.
+/// TOTP provisioning never happens through an end-user SSO session.
+async fn enroll_totp(
+    db: &DatabaseConnection,
+    username: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use rand::RngExt;
+    let mut secret = [0u8; 32];
+    rand::rng().fill(&mut secret);
+    let result = db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE developer_administrators SET totp_secret = ?, totp_last_step = -1 WHERE username = ? AND active = 1 AND totp_secret IS NULL",
+        [secret.to_vec().into(), username.to_owned().into()],
+    )).await?;
+    if result.rows_affected() != 1 {
+        return Err("Unknown, disabled, or already enrolled administrator".into());
+    }
+    let encoded = admin_totp::encode_base32(&secret);
+    println!("TOTP seed (shown once; store offline): {encoded}");
+    println!(
+        "Authenticator setup: otpauth://totp/DonnarieixAuth:{username}?secret={encoded}&issuer=DonnarieixAuth&algorithm=SHA256&digits=6&period=30"
+    );
+    Ok(())
+}
+
 pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let db = db().await?;
     match args {
+        [command, action, operation, username]
+            if command == "admin" && action == "totp" && operation == "enroll" =>
+        {
+            enroll_totp(&db, username).await?;
+        }
         [command, action, username] if command == "admin" && action == "bootstrap" => {
             bootstrap_administrator(&db, username).await?;
         }
@@ -134,7 +165,7 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id> | admin bootstrap <username> | admin token rotate <username>".into()),
+        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id> | admin bootstrap <username> | admin token rotate <username> | admin totp enroll <username>".into()),
     }
     Ok(())
 }
