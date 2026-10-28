@@ -40,7 +40,20 @@ For the developer account, **stop the server first** (both CLI and server access
 cargo run -- admin bootstrap operator
 ```
 
-Store the one-time generated administrator token in your local password manager. Restart the server and use the separate developer console credentials. For credential recovery, the trusted local CLI offers `cargo run -- admin token rotate operator`, which revokes prior developer browser sessions.
+Store the one-time generated administrator token in your local password manager. For local administrator MFA, enroll a separate TOTP secret while the service
+is stopped:
+
+```sh
+cargo run -- admin totp enroll operator
+```
+
+Configure your authenticator with the printed provisioning URI
+(SHA256 / six digits / 30-second period). Keep the seed private and do not
+commit it. Then restart the server and sign into the separate developer
+console with the administrator credential **and**, after enrollment, a
+six-digit authenticator code. The same time-step code cannot be reused.
+Enrollment is optional for existing development administrators, but should
+be completed before testing privileged flows. For credential recovery, the trusted local CLI offers `cargo run -- admin token rotate operator`, which revokes prior developer browser sessions.
 
 Registered desktop client callbacks may use the exact loopback HTTP URI with a fixed port; web client callbacks require HTTPS. Web clients additionally require a secret, which can be created in the developer console with administrator reauthentication or using `cargo run -- client secret rotate <client-id>` with the server stopped. Never put the web client secret in browser JavaScript.
 
