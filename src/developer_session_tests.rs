@@ -523,15 +523,32 @@ async fn enrolling_totp_revokes_all_existing_admin_sessions() {
     .unwrap();
     let app = router(AppState::with_db(db.clone()));
     let cookie = format!("developer_session={session}");
-    let before = call(&app, Method::GET, "/developer/clients", String::new(), &[("cookie", &cookie)]).await;
+    let before = call(
+        &app,
+        Method::GET,
+        "/developer/clients",
+        String::new(),
+        &[("cookie", &cookie)],
+    )
+    .await;
     assert_eq!(before.status(), StatusCode::OK);
     db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE developer_administrators SET totp_secret = ? WHERE id = ?",
-        [b"12345678901234567890123456789012".to_vec().into(), admin.to_string().into()],
+        [
+            b"12345678901234567890123456789012".to_vec().into(),
+            admin.to_string().into(),
+        ],
     ))
     .await
     .unwrap();
-    let after = call(&app, Method::GET, "/developer/clients", String::new(), &[("cookie", &cookie)]).await;
+    let after = call(
+        &app,
+        Method::GET,
+        "/developer/clients",
+        String::new(),
+        &[("cookie", &cookie)],
+    )
+    .await;
     assert_eq!(after.status(), StatusCode::UNAUTHORIZED);
 }
