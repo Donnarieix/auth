@@ -123,9 +123,54 @@ async fn enroll_totp(
     Ok(())
 }
 
+/// Local-only emergency MFA recovery. Requiring possession of the SQLite
+/// storage host avoids any browser or SSO-based second-factor bypass.
+async fn reset_totp(
+    db: &DatabaseConnection,
+    username: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let tx = db.begin().await?;
+    let updated = tx
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE developer_administrators SET totp_secret = NULL, totp_last_step = -1 WHERE username = ? AND active = 1 AND totp_secret IS NOT NULL",
+            [username.to_owned().into()],
+        ))
+        .await?;
+    if updated.rows_affected() != 1 {
+        return Err("Unknown, disabled, or unenrolled administrator".into());
+    }
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE developer_sessions SET revoked = 1 WHERE administrator_id IN (SELECT id FROM developer_administrators WHERE username = ?)",
+        [username.to_owned().into()],
+    ))
+    .await?;
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_admin_events(id, administrator_id, event_type, created_at) SELECT ?, id, 'totp_reset', ? FROM developer_administrators WHERE username = ?",
+        [
+            Uuid::new_v4().to_string().into(),
+            chrono::Utc::now().to_rfc3339().into(),
+            username.to_owned().into(),
+        ],
+    ))
+    .await?;
+    tx.commit().await?;
+    println!(
+        "Second factor reset locally. All developer sessions revoked. Re-enroll TOTP before using privileged operations."
+    );
+    Ok(())
+}
+
 pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let db = db().await?;
     match args {
+        [command, action, operation, username]
+            if command == "admin" && action == "totp" && operation == "reset" =>
+        {
+            reset_totp(&db, username).await?;
+        }
         [command, action, operation, username]
             if command == "admin" && action == "totp" && operation == "enroll" =>
         {
@@ -165,7 +210,7 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id> | admin bootstrap <username> | admin token rotate <username> | admin totp enroll <username>".into()),
+        _ => return Err("Usage: cargo run -- client add <web|desktop> <name> <redirect-uri>... | client list | client disable <id> | client secret rotate <web-client-id> | admin bootstrap <username> | admin token rotate <username> | admin totp enroll <username> | admin totp reset <username>".into()),
     }
     Ok(())
 }
@@ -176,8 +221,62 @@ mod tests {
     use sha2::{Digest, Sha256};
     use uuid::Uuid;
 
-    use super::rotate_administrator_token;
+    use super::{reset_totp, rotate_administrator_token};
     use crate::schema;
+
+    #[tokio::test]
+    async fn local_mfa_reset_audits_and_revokes_all_sessions() {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        schema::apply(&db).await.unwrap();
+        let id = Uuid::new_v4().to_string();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO developer_administrators(id,username,token_hash,created_at,active,totp_secret) VALUES(?,?,?,?,1,?)",
+            [
+                id.clone().into(),
+                "operator".to_owned().into(),
+                Sha256::digest(b"admin-credential").to_vec().into(),
+                chrono::Utc::now().to_rfc3339().into(),
+                b"12345678901234567890123456789012".to_vec().into(),
+            ],
+        ))
+        .await
+        .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO developer_sessions(id,administrator_id,token_hash,expires_at,revoked) VALUES(?,?,?,?,0)",
+            [
+                Uuid::new_v4().to_string().into(),
+                id.into(),
+                Sha256::digest(b"active-session").to_vec().into(),
+                (chrono::Utc::now() + chrono::Duration::minutes(30))
+                    .to_rfc3339()
+                    .into(),
+            ],
+        ))
+        .await
+        .unwrap();
+        reset_totp(&db, "operator").await.unwrap();
+        let result = db.query_one_raw(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT a.totp_secret, a.totp_last_step, s.revoked FROM developer_administrators a JOIN developer_sessions s ON s.administrator_id = a.id WHERE a.username = 'operator'",
+        )).await.unwrap().unwrap();
+        let secret: Option<Vec<u8>> = result.try_get("", "totp_secret").unwrap();
+        let step: i64 = result.try_get("", "totp_last_step").unwrap();
+        let revoked: bool = result.try_get("", "revoked").unwrap();
+        assert!(secret.is_none());
+        assert_eq!(step, -1);
+        assert!(revoked);
+        let event = db
+            .query_one_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT id FROM developer_admin_events WHERE event_type = 'totp_reset'",
+            ))
+            .await
+            .unwrap();
+        assert!(event.is_some());
+        assert!(reset_totp(&db, "operator").await.is_err());
+    }
 
     #[tokio::test]
     async fn rotation_changes_credential_and_writes_audit_event() {
