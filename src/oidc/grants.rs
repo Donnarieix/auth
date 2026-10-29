@@ -3,8 +3,8 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
-    TransactionTrait, ConnectionTrait, DbBackend, Statement, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, DbErr,
+    EntityTrait, QueryFilter, Statement, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -187,7 +187,9 @@ pub async fn redeem(
             "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = ? AND r.audience = ? AND r.active = 1",
             [app.id.to_string().into(), audience.clone().into()],
         )).await?;
-        if allowed.is_none() { return Err(GrantError::InvalidGrant); }
+        if allowed.is_none() {
+            return Err(GrantError::InvalidGrant);
+        }
     }
 
     if let (Some(audience), Some(scope)) = (&record.audience, &record.resource_scope) {
@@ -196,7 +198,9 @@ pub async fn redeem(
                 "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
                 [app.id.to_string().into(),audience.clone().into(),permission.to_owned().into()]
             )).await?;
-            if valid.is_none() { return Err(GrantError::InvalidGrant); }
+            if valid.is_none() {
+                return Err(GrantError::InvalidGrant);
+            }
         }
     }
     // Consent may be revoked between authorization and code redemption.

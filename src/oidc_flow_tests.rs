@@ -237,7 +237,8 @@ async fn confidential_web_client_requires_secret_and_pkce() {
             ("content-type", "application/x-www-form-urlencoded"),
             ("authorization", &format!("Basic {basic}")),
         ],
-    ).await;
+    )
+    .await;
     assert_eq!(check.status(), StatusCode::OK);
     let status: serde_json::Value =
         serde_json::from_slice(&to_bytes(check.into_body(), 100_000).await.unwrap()).unwrap();
@@ -251,7 +252,8 @@ async fn confidential_web_client_requires_secret_and_pkce() {
         "/introspect",
         introspection_form,
         &[("content-type", "application/x-www-form-urlencoded")],
-    ).await;
+    )
+    .await;
     assert_eq!(forbidden.status(), StatusCode::UNAUTHORIZED);
 
     let replay = request(

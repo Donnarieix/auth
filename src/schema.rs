@@ -444,20 +444,35 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
     }
 
     let has_v14 = tx
-        .query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 14"))
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 14",
+        ))
         .await?
         .is_some();
     if !has_v14 {
         for sql in RESOURCE_SCHEMA {
             tx.execute_raw(statement(sql)).await?;
         }
-        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (14)")).await?;
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (14)",
+        ))
+        .await?;
     }
 
-    let has_v15 = tx.query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 15")).await?.is_some();
+    let has_v15 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 15",
+        ))
+        .await?
+        .is_some();
     if !has_v15 {
-        for sql in RESOURCE_SECURITY_SCHEMA { tx.execute_raw(statement(sql)).await?; }
-        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (15)")).await?;
+        for sql in RESOURCE_SECURITY_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (15)",
+        ))
+        .await?;
     }
 
     tx.commit().await

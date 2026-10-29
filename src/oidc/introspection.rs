@@ -74,49 +74,83 @@ pub async fn introspect(
         return Err(StatusCode::UNAUTHORIZED);
     };
     use base64::{Engine as _, engine::general_purpose::STANDARD};
-    let decoded = STANDARD.decode(encoded).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let decoded = STANDARD
+        .decode(encoded)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
     let credentials = std::str::from_utf8(&decoded).map_err(|_| StatusCode::UNAUTHORIZED)?;
-    let (client_id, _) = credentials.split_once(':').ok_or(StatusCode::UNAUTHORIZED)?;
+    let (client_id, _) = credentials
+        .split_once(':')
+        .ok_or(StatusCode::UNAUTHORIZED)?;
     if client_id.len() > 256 {
         return Err(StatusCode::UNAUTHORIZED);
     }
     // Resource servers authenticate separately from OAuth clients. Their
     // credentials never authorize them to read another resource's tokens.
-    let resource = state.db.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        "SELECT audience,secret_hash FROM oauth_resources WHERE audience = ? AND active = 1",
-        [client_id.to_owned().into()],
-    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let resource = state
+        .db
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT audience,secret_hash FROM oauth_resources WHERE audience = ? AND active = 1",
+            [client_id.to_owned().into()],
+        ))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let is_resource = if let Some(row) = resource.as_ref() {
-        let stored: Vec<u8> = row.try_get("", "secret_hash").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let provided = credentials.split_once(':').map(|(_, secret)| secret).unwrap_or("");
+        let stored: Vec<u8> = row
+            .try_get("", "secret_hash")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let provided = credentials
+            .split_once(':')
+            .map(|(_, secret)| secret)
+            .unwrap_or("");
         let digest = Sha256::digest(provided.as_bytes());
-        provided.len() == 43 && stored.len() == 32 && digest.iter()
-            .zip(stored.iter()).fold(0u8, |acc, (a,b)| acc | (a ^ b)) == 0
-    } else { false };
-    let app = if is_resource { None } else {
+        provided.len() == 43
+            && stored.len() == 32
+            && digest
+                .iter()
+                .zip(stored.iter())
+                .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                == 0
+    } else {
+        false
+    };
+    let app = if is_resource {
+        None
+    } else {
         let app = client::Entity::find()
             .filter(client::Column::ClientId.eq(client_id))
             .filter(client::Column::Active.eq(true))
-            .one(&state.db).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .filter(|app| app.client_type == "web")
             .ok_or(StatusCode::UNAUTHORIZED)?;
-        if !app.client_secret_hash.as_deref().is_some_and(|hash| {
-            valid_web_client_secret(&headers, client_id, hash)
-        }) { return Err(StatusCode::UNAUTHORIZED); }
+        if !app
+            .client_secret_hash
+            .as_deref()
+            .is_some_and(|hash| valid_web_client_secret(&headers, client_id, hash))
+        {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
         Some(app)
     };
-    if resource.is_some() && !is_resource { return Err(StatusCode::UNAUTHORIZED); }
+    if resource.is_some() && !is_resource {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
-    if form.token.len() != 43 || !form.token.is_ascii()
-        || form.token_type_hint.as_deref().is_some_and(|hint| hint.len() > 64)
+    if form.token.len() != 43
+        || !form.token.is_ascii()
+        || form
+            .token_type_hint
+            .as_deref()
+            .is_some_and(|hint| hint.len() > 64)
     {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
     let hash = Sha256::digest(form.token.as_bytes()).to_vec();
     let Some(access) = oidc_access_token::Entity::find()
         .filter(oidc_access_token::Column::TokenHash.eq(hash))
-                .filter(oidc_access_token::Column::Revoked.eq(false))
+        .filter(oidc_access_token::Column::Revoked.eq(false))
         .one(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -140,9 +174,14 @@ pub async fn introspect(
     else {
         return Ok(Json(IntrospectionResponse::inactive()));
     };
-    let Some(token_client) = client::Entity::find_by_id(access.client_id).one(&state.db)
-        .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .filter(|app| app.active) else { return Ok(Json(IntrospectionResponse::inactive())); };
+    let Some(token_client) = client::Entity::find_by_id(access.client_id)
+        .one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .filter(|app| app.active)
+    else {
+        return Ok(Json(IntrospectionResponse::inactive()));
+    };
     if !consent::approved(&state.db, account.id, token_client.id, &access.scope)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -155,7 +194,9 @@ pub async fn introspect(
                 "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
                 [token_client.id.to_string().into(),audience.clone().into(),permission.to_owned().into()]
             )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            if permitted.is_none() { return Ok(Json(IntrospectionResponse::inactive())); }
+            if permitted.is_none() {
+                return Ok(Json(IntrospectionResponse::inactive()));
+            }
         }
     }
     Ok(Json(IntrospectionResponse {
