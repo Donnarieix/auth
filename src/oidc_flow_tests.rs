@@ -549,7 +549,10 @@ async fn audience_bound_access_can_be_revoked_without_affecting_other_resources(
     let inspect_form = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("token", token)
         .finish();
-    for (index, (_audience, expected)) in [(resource_a, true), (resource_b, false)].into_iter().enumerate() {
+    for (index, (_audience, expected)) in [(resource_a, true), (resource_b, false)]
+        .into_iter()
+        .enumerate()
+    {
         let resource_basic = STANDARD.encode(format!("{}:{server_secret}", resource_ids[index]));
         let inspect = request(
             &app,
