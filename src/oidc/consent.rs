@@ -303,4 +303,45 @@ mod tests {
         account.update(&db).await.unwrap();
         assert!(approve(&db, uid, cid, "openid").await.is_err());
     }
+    #[tokio::test]
+    async fn explicit_api_consent_requires_an_operator_grant_and_is_resource_specific() {
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        let (db, user_id, client_id) = fixture().await;
+        let resource_id = Uuid::new_v4().to_string();
+        let api = "https://api.example.test";
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
+            [resource_id.clone().into(), api.into(), "Test API".into(), vec![0u8;32].into()],
+        )).await.unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_client_resources(client_id,resource_id) VALUES(?,?)",
+            [client_id.to_string().into(), resource_id.clone().into()],
+        )).await.unwrap();
+        assert!(super::approve_request(&db,user_id,client_id,"openid",
+            Some(api),Some("documents:read")).await.is_err());
+
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_resource_scopes(resource_id,scope) VALUES(?,?)",
+            [resource_id.clone().into(),"documents:read".into()],
+        )).await.unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_client_resource_scopes(client_id,resource_id,scope) VALUES(?,?,?)",
+            [client_id.to_string().into(),resource_id.into(),"documents:read".into()],
+        )).await.unwrap();
+        assert!(super::approve_request(&db,user_id,client_id,"openid",
+            Some(api),Some("documents:read")).await.is_ok());
+        assert!(super::approved_resource(&db,user_id,client_id,Some(api),
+            Some("documents:read")).await.unwrap());
+        assert!(!super::approved_resource(&db,user_id,client_id,Some(api),
+            Some("documents:write")).await.unwrap());
+        assert!(!super::approved_resource(&db,user_id,client_id,
+            Some("https://other.example.test"),Some("documents:read")).await.unwrap());
+        assert!(!super::approved_resource(&db,Uuid::new_v4(),client_id,
+            Some(api),Some("documents:read")).await.unwrap());
+    }
+
 }
