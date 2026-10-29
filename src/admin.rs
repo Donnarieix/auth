@@ -287,7 +287,8 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         }
         [command, action, operation, audience] if command == "resource" && action == "secret" && operation == "rotate" => {
             let (secret, _) = generate_token();
-            let result = db.execute_raw(Statement::from_sql_and_values(
+            let tx = db.begin().await?;
+            let result = tx.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE oauth_resources SET secret_hash = ? WHERE audience = ? AND active = 1",
                 [Sha256::digest(secret.as_bytes()).to_vec().into(), audience.to_owned().into()],
@@ -298,7 +299,8 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             tx.commit().await?;
         }
         [command, action, client_id, audience] if command == "resource" && action == "allow" => {
-            let result = db.execute_raw(Statement::from_sql_and_values(
+            let tx = db.begin().await?;
+            let result = tx.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO oauth_client_resources(client_id,resource_id) SELECT c.id,r.id FROM clients c CROSS JOIN oauth_resources r WHERE c.client_id = ? AND c.active = 1 AND r.audience = ? AND r.active = 1",
                 [client_id.to_owned().into(), audience.to_owned().into()],
