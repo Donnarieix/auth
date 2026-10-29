@@ -160,8 +160,11 @@ pub async fn introspect(
     if !is_resource && app.as_ref().is_none_or(|app| access.client_id != app.id) {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
-    let resource_audience: Option<String> = resource.as_ref().map(|row| row.try_get("", "audience"))
-        .transpose().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let resource_audience: Option<String> = resource
+        .as_ref()
+        .map(|row| row.try_get("", "audience"))
+        .transpose()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if is_resource && access.audience.as_deref() != resource_audience.as_deref() {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
