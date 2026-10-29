@@ -92,7 +92,7 @@ pub async fn validate_authorization_request(
         let allowed = db.query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = ? AND r.audience = ? AND r.active = 1",
-            [app.id.to_string().into(), resource.clone().into()],
+            [app.id.into(), resource.clone().into()],
         )).await?;
         if allowed.is_none() {
             return Err(AuthorizationError::InvalidClient);
@@ -126,7 +126,7 @@ pub async fn validate_authorization_request(
         for item in scopes {
             let permitted = db.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
             "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id = crs.resource_id WHERE crs.client_id = ? AND r.audience = ? AND r.active = 1 AND crs.scope = ?",
-            [app.id.to_string().into(), resource.clone().into(), item.to_owned().into()])).await?;
+            [app.id.into(), resource.clone().into(), item.to_owned().into()])).await?;
             if permitted.is_none() {
                 return Err(AuthorizationError::InvalidScope);
             }
@@ -255,7 +255,7 @@ mod tests {
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO oauth_client_resources(client_id,resource_id) VALUES(?,?)",
-            [owner.id.to_string().into(), resource_id.into()],
+            [owner.id.into(), resource_id.into()],
         ))
         .await
         .unwrap();
