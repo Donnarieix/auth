@@ -196,7 +196,7 @@ pub async fn redeem(
         let allowed = tx.query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = ? AND r.audience = ? AND r.active = 1",
-            [app.id.to_string().into(), audience.clone().into()],
+            [app.id.into(), audience.clone().into()],
         )).await?;
         if allowed.is_none() {
             return Err(GrantError::InvalidGrant);
@@ -207,7 +207,7 @@ pub async fn redeem(
         for permission in scope.split_whitespace() {
             let valid = tx.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
                 "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
-                [app.id.to_string().into(),audience.clone().into(),permission.to_owned().into()]
+                [app.id.into(),audience.clone().into(),permission.to_owned().into()]
             )).await?;
             if valid.is_none() {
                 return Err(GrantError::InvalidGrant);
