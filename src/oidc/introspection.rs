@@ -138,7 +138,11 @@ pub async fn introspect(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
-    if !state.abuse.allow("oidc_introspection", client_id, 120, 60).await {
+    if !state
+        .abuse
+        .allow("oidc_introspection", client_id, 120, 60)
+        .await
+    {
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
