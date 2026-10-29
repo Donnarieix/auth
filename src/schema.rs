@@ -202,6 +202,7 @@ const RESOURCE_USER_CONSENT_SCHEMA: &[&str] = &[
 const SESSION_EVENT_SCHEMA: &[&str] = &[
     "CREATE TABLE oauth_session_events (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, reason TEXT NOT NULL, created_at TEXT NOT NULL)",
     "CREATE INDEX oauth_session_events_client_idx ON oauth_session_events(client_id,id)",
+    "CREATE TRIGGER oauth_user_disabled_session_event AFTER UPDATE OF active ON users FOR EACH ROW WHEN NEW.active=0 AND OLD.active<>NEW.active BEGIN INSERT INTO oauth_session_events(client_id,user_id,reason,created_at) SELECT c.client_id,c.user_id,'account_disabled',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM oidc_consents c WHERE c.user_id=NEW.id; END",
     "CREATE TRIGGER oauth_password_reset_session_event AFTER UPDATE OF password_hash ON password_credentials BEGIN INSERT INTO oauth_session_events(client_id,user_id,reason,created_at) SELECT c.client_id,c.user_id,'password_reset',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM oidc_consents c WHERE c.user_id=NEW.user_id; END",
 ];
 
