@@ -12,6 +12,7 @@ pub struct Model {
     pub client_id: Uuid,
     pub scope: String,
     pub audience: Option<String>,
+    pub resource_scope: Option<String>,
     pub created_at: DateTimeUtc,
     pub expires_at: DateTimeUtc,
     pub revoked: bool,
