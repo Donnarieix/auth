@@ -98,6 +98,13 @@ pub async fn revoke(
         .exec(&tx)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // A confidential relying party can poll its own revocation events and
+    // invalidate every local session for this subject.
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO oauth_session_events(client_id,user_id,reason,created_at) VALUES(?,?,'consent_revoked',?)",
+        [app.id.to_string().into(),account.id.to_string().into(),now.to_rfc3339().into()],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     tx.commit()
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
