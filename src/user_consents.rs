@@ -56,12 +56,15 @@ pub async fn list(
                 "SELECT r.audience,rc.scope FROM oauth_resource_consents rc JOIN oauth_resources r ON rc.resource_id=r.id WHERE rc.user_id=? AND rc.client_id=? AND rc.revoked_at IS NULL",
                 [account.id.into(),app.id.into()],
             )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let resources = resource_rows.into_iter().map(|row| {
-                Ok(ResourceConsentView {
-                    audience: row.try_get("", "audience")?,
-                    permissions: row.try_get("", "scope")?,
+            let resources = resource_rows
+                .into_iter()
+                .map(|row| {
+                    Ok(ResourceConsentView {
+                        audience: row.try_get("", "audience")?,
+                        permissions: row.try_get("", "scope")?,
+                    })
                 })
-            }).collect::<Result<Vec<_>,sea_orm::DbErr>>()
+                .collect::<Result<Vec<_>, sea_orm::DbErr>>()
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
             entries.push(ConsentView {
                 client_id: app.client_id,
