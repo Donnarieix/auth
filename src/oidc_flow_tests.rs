@@ -469,8 +469,10 @@ async fn audience_bound_access_can_be_revoked_without_affecting_other_resources(
     let resource_b = "https://api-b.example.test";
     let server_secret = "r".repeat(43);
 
+    let mut resource_ids = Vec::new();
     for resource in [resource_a, resource_b] {
         let id = Uuid::new_v4().to_string();
+        resource_ids.push(id.clone());
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
@@ -547,8 +549,8 @@ async fn audience_bound_access_can_be_revoked_without_affecting_other_resources(
     let inspect_form = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("token", token)
         .finish();
-    for (audience, expected) in [(resource_a, true), (resource_b, false)] {
-        let resource_basic = STANDARD.encode(format!("{audience}:{server_secret}"));
+    for (index, (_audience, expected)) in [(resource_a, true), (resource_b, false)].into_iter().enumerate() {
+        let resource_basic = STANDARD.encode(format!("{}:{server_secret}", resource_ids[index]));
         let inspect = request(
             &app,
             Method::POST,
@@ -578,7 +580,7 @@ async fn audience_bound_access_can_be_revoked_without_affecting_other_resources(
     )
     .await;
     assert_eq!(revoked.status(), StatusCode::NO_CONTENT);
-    let resource_basic = STANDARD.encode(format!("{resource_a}:{server_secret}"));
+    let resource_basic = STANDARD.encode(format!("{}:{server_secret}", resource_ids[0]));
     let inspect = request(
         &app,
         Method::POST,
