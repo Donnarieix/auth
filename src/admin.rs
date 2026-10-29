@@ -184,6 +184,51 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         {
             rotate_administrator_token(&db, username).await?;
         }
+        [command, action, audience, scope] if command == "resource" && action == "scope" => {
+            if scope.is_empty() || scope.len() > 64 || !scope.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b,b':'|b'.'|b'_'|b'-')) {
+                return Err("Invalid resource permission".into());
+            }
+            let tx = db.begin().await?;
+            let inserted = tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "INSERT INTO oauth_resource_scopes(resource_id,scope) SELECT id,? FROM oauth_resources WHERE audience=? AND active=1",
+                [scope.to_owned().into(), audience.to_owned().into()]
+            )).await?;
+            if inserted.rows_affected()!=1 { return Err("Resource unavailable or scope exists".into()); }
+            tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "INSERT INTO oauth_resource_events(id,event_kind,resource_audience,created_at) VALUES(?,'scope_added',?,?)",
+                [Uuid::new_v4().to_string().into(),audience.to_owned().into(),chrono::Utc::now().to_rfc3339().into()]
+            )).await?;
+            tx.commit().await?;
+        }
+        [command, action, operation, client_id, audience, scope] if command == "resource" && action == "permission" && operation == "allow" => {
+            let tx = db.begin().await?;
+            let result = tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "INSERT INTO oauth_client_resource_scopes(client_id,resource_id,scope) SELECT c.id,r.id,? FROM clients c JOIN oauth_client_resources cr ON cr.client_id=c.id JOIN oauth_resources r ON r.id=cr.resource_id JOIN oauth_resource_scopes rs ON rs.resource_id=r.id AND rs.scope=? WHERE c.client_id=? AND r.audience=? AND c.active=1 AND r.active=1",
+                [scope.to_owned().into(),scope.to_owned().into(),client_id.to_owned().into(),audience.to_owned().into()]
+            )).await?;
+            if result.rows_affected()!=1 { return Err("No active permission grant or duplicate".into()); }
+            tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "INSERT INTO oauth_resource_events(id,event_kind,resource_audience,client_public_id,created_at) VALUES(?,'permission_allowed',?,?,?)",
+                [Uuid::new_v4().to_string().into(),audience.to_owned().into(),client_id.to_owned().into(),chrono::Utc::now().to_rfc3339().into()]
+            )).await?;
+            tx.commit().await?;
+        }
+        [command, action, operation, client_id, audience, scope] if command == "resource" && action == "permission" && operation == "deny" => {
+            let tx = db.begin().await?;
+            tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "DELETE FROM oauth_client_resource_scopes WHERE client_id=(SELECT id FROM clients WHERE client_id=?) AND resource_id=(SELECT id FROM oauth_resources WHERE audience=?) AND scope=?",
+                [client_id.to_owned().into(),audience.to_owned().into(),scope.to_owned().into()]
+            )).await?;
+            tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "UPDATE oidc_access_tokens SET revoked=1 WHERE client_id=(SELECT id FROM clients WHERE client_id=?) AND audience=? AND (' ' || COALESCE(resource_scope,'') || ' ') LIKE ?",
+                [client_id.to_owned().into(),audience.to_owned().into(),format!("% {scope} %").into()]
+            )).await?;
+            tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "INSERT INTO oauth_resource_events(id,event_kind,resource_audience,client_public_id,created_at) VALUES(?,'permission_denied',?,?,?)",
+                [Uuid::new_v4().to_string().into(),audience.to_owned().into(),client_id.to_owned().into(),chrono::Utc::now().to_rfc3339().into()]
+            )).await?;
+            tx.commit().await?;
+        }
         [command, action, audience, name] if command == "resource" && action == "add" => {
             if audience.len() > 256 || audience.len() < 8 || name.is_empty() || name.len() > 100 {
                 return Err("Invalid resource identifier or name".into());
