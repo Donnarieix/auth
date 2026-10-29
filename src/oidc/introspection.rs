@@ -188,6 +188,9 @@ pub async fn introspect(
     {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
+    if !consent::approved_resource(&state.db, account.id, token_client.id, access.audience.as_deref(), access.resource_scope.as_deref()).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+        return Ok(Json(IntrospectionResponse::inactive()));
+    }
     if let (Some(audience), Some(scope)) = (&access.audience, &access.resource_scope) {
         for permission in scope.split_whitespace() {
             let permitted = state.db.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
