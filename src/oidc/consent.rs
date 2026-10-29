@@ -100,7 +100,7 @@ pub async fn approve_request(
             let allowed = tx.query_one_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
-                [client_id.to_string().into(), audience.to_owned().into(), (*permission).to_owned().into()],
+                [client_id.into(), audience.to_owned().into(), (*permission).to_owned().into()],
             )).await?;
             if allowed.is_none() {
                 return Err(DbErr::Custom("Resource permission not allowed".into()));
@@ -110,17 +110,17 @@ pub async fn approve_request(
         tx.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "DELETE FROM oauth_resource_consents WHERE user_id=? AND client_id=? AND resource_id=(SELECT id FROM oauth_resources WHERE audience=?)",
-            [user_id.to_string().into(),client_id.to_string().into(),audience.to_owned().into()],
+            [user_id.into(),client_id.into(),audience.to_owned().into()],
         )).await?;
         tx.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "UPDATE oidc_access_tokens SET revoked=1 WHERE user_id=? AND client_id=? AND audience=?",
-            [user_id.to_string().into(),client_id.to_string().into(),audience.to_owned().into()],
+            [user_id.into(),client_id.into(),audience.to_owned().into()],
         )).await?;
         let inserted = tx.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO oauth_resource_consents(user_id,client_id,resource_id,scope,approved_at,revoked_at) SELECT ?,?,id,?,?,NULL FROM oauth_resources WHERE audience=? AND active=1",
-            [user_id.to_string().into(),client_id.to_string().into(),permissions.to_owned().into(),now.to_rfc3339().into(),audience.to_owned().into()],
+            [user_id.into(),client_id.into(),permissions.to_owned().into(),now.to_rfc3339().into(),audience.to_owned().into()],
         )).await?;
         if inserted.rows_affected() != 1 {
             return Err(DbErr::Custom("Unknown resource".into()));
@@ -160,7 +160,7 @@ pub async fn approved_resource<C: ConnectionTrait>(
     let record = db.query_one_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT rc.scope FROM oauth_resource_consents rc JOIN oauth_resources r ON r.id=rc.resource_id WHERE rc.user_id=? AND rc.client_id=? AND r.audience=? AND r.active=1 AND rc.revoked_at IS NULL",
-        [user_id.to_string().into(),client_id.to_string().into(),audience.to_owned().into()],
+        [user_id.into(),client_id.into(),audience.to_owned().into()],
     )).await?;
     let Some(record) = record else {
         return Ok(false);
@@ -324,7 +324,7 @@ mod tests {
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "INSERT INTO oauth_client_resources(client_id,resource_id) VALUES(?,?)",
-            [client_id.to_string().into(), resource_id.clone().into()],
+            [client_id.into(), resource_id.clone().into()],
         ))
         .await
         .unwrap();
@@ -352,7 +352,7 @@ mod tests {
             DbBackend::Sqlite,
             "INSERT INTO oauth_client_resource_scopes(client_id,resource_id,scope) VALUES(?,?,?)",
             [
-                client_id.to_string().into(),
+                client_id.into(),
                 resource_id.into(),
                 "documents:read".into(),
             ],
