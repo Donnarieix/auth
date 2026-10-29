@@ -242,7 +242,7 @@ pub async fn approve(
             "Unsupported or unconfigured client.",
         );
     }
-    if crate::oidc::consent::approve(&state.db, account.id, app.id, &request.scope)
+    if crate::oidc::consent::approve_request(&state.db, account.id, app.id, &request.scope, request.resource.as_deref(), request.resource_scope.as_deref())
         .await
         .is_err()
     {
