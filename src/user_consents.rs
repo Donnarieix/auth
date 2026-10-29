@@ -89,7 +89,7 @@ pub async fn revoke(
     tx.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "UPDATE oauth_resource_consents SET revoked_at=? WHERE user_id=? AND client_id=? AND revoked_at IS NULL",
-        [now.to_rfc3339().into(),account.id.to_string().into(),app.id.to_string().into()],
+        [now.to_rfc3339().into(),account.id.into(),app.id.into()],
     )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     oidc_access_token::Entity::update_many()
         .col_expr(oidc_access_token::COLUMN.revoked, Expr::value(true))
@@ -103,7 +103,7 @@ pub async fn revoke(
     tx.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO oauth_session_events(client_id,user_id,reason,created_at) VALUES(?,?,'consent_revoked',?)",
-        [app.id.to_string().into(),account.id.to_string().into(),now.to_rfc3339().into()],
+        [app.id.into(),account.id.into(),now.to_rfc3339().into()],
     )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     tx.commit()
         .await
