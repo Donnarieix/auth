@@ -199,6 +199,7 @@ pub async fn token(
         client_id: Set(app.id),
         scope: Set(grant.scope.clone()),
         audience: Set(grant.resource.clone()),
+        resource_scope: Set(grant.resource_scope.clone()),
         created_at: Set(now),
         expires_at: Set(now + Duration::minutes(5)),
         revoked: Set(false),
