@@ -11,7 +11,7 @@ use rsa::{
     RsaPrivateKey,
     pkcs8::{EncodePrivateKey, LineEnding},
 };
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, Database};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -51,7 +51,7 @@ async fn request(
         .unwrap()
 }
 
-async fn fixture_for(kind: ClientType, redirect: &str) -> (Router, String, String, Option<String>) {
+async fn fixture_for(kind: ClientType, redirect: &str) -> (Router, String, String, Option<String>, DatabaseConnection) {
     let db = Database::connect("sqlite::memory:").await.unwrap();
     schema::apply(&db).await.unwrap();
     let public_client = register_client(&db, "Test Client", kind, &[redirect.to_owned()])
@@ -118,11 +118,12 @@ async fn fixture_for(kind: ClientType, redirect: &str) -> (Router, String, Strin
         public_client,
         format!("__Host-auth_session={raw_cookie}"),
         secret,
+        db,
     )
 }
 
 async fn fixture() -> (Router, String, String) {
-    let (app, client, cookie, _) = fixture_for(ClientType::Desktop, REDIRECT).await;
+    let (app, client, cookie, _, _) = fixture_for(ClientType::Desktop, REDIRECT).await;
     (app, client, cookie)
 }
 
@@ -162,7 +163,7 @@ async fn confidential_web_client_requires_secret_and_pkce() {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     let redirect = "https://web.example.test/oauth/callback";
-    let (app, client, cookie, secret) = fixture_for(ClientType::Web, redirect).await;
+    let (app, client, cookie, secret, _) = fixture_for(ClientType::Web, redirect).await;
     let form = authorization_form_for(&client, redirect);
     let approval = request(
         &app,
