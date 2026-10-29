@@ -90,7 +90,7 @@ pub async fn introspect(
         .db
         .query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT audience,secret_hash FROM oauth_resources WHERE audience = ? AND active = 1",
+            "SELECT audience,secret_hash FROM oauth_resources WHERE id = ? AND active = 1",
             [client_id.to_owned().into()],
         ))
         .await
@@ -160,7 +160,9 @@ pub async fn introspect(
     if !is_resource && app.as_ref().is_none_or(|app| access.client_id != app.id) {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
-    if is_resource && access.audience.as_deref() != Some(client_id) {
+    let resource_audience: Option<String> = resource.as_ref().map(|row| row.try_get("", "audience"))
+        .transpose().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if is_resource && access.audience.as_deref() != resource_audience.as_deref() {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
     if access.expires_at <= Utc::now() {
