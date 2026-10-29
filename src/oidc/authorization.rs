@@ -84,6 +84,7 @@ fn hidden_request(req: &AuthorizationRequest) -> String {
         hidden("redirect_uri", &req.redirect_uri),
         hidden("scope", &req.scope),
         req.resource.as_ref().map(|r| hidden("resource", r)).unwrap_or_default(),
+        req.resource_scope.as_ref().map(|r| hidden("resource_scope", r)).unwrap_or_default(),
         hidden("state", &req.state),
         hidden("nonce", &req.nonce),
         hidden("code_challenge", &req.code_challenge),
@@ -127,8 +128,11 @@ pub async fn authorization_page(
     let resource_display = request.resource.as_deref().map(|resource| {
         format!("<p>Protected API: <code>{}</code></p>", escape(resource))
     }).unwrap_or_default();
+    let permissions_display = request.resource_scope.as_deref().map(|scope| {
+        format!("<p>API permissions: <code>{}</code></p>", escape(scope))
+    }).unwrap_or_default();
     let details = format!(
-        "<p>Application: <strong>{}</strong></p><p>Requested permissions: <code>{}</code></p>{resource_display}",
+        "<p>Application: <strong>{}</strong></p><p>Requested permissions: <code>{}</code></p>{resource_display}{permissions_display}",
         escape(&app.name),
         escape(&request.scope),
     );
