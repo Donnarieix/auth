@@ -186,6 +186,14 @@ const RESOURCE_SCHEMA: &[&str] = &[
     "ALTER TABLE authorization_codes ADD COLUMN audience TEXT",
 ];
 
+const RESOURCE_SECURITY_SCHEMA: &[&str] = &[
+    "CREATE TABLE oauth_resource_scopes (resource_id TEXT NOT NULL REFERENCES oauth_resources(id) ON DELETE CASCADE, scope TEXT NOT NULL, PRIMARY KEY(resource_id,scope))",
+    "CREATE TABLE oauth_client_resource_scopes (client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES oauth_resources(id) ON DELETE CASCADE, scope TEXT NOT NULL, PRIMARY KEY(client_id,resource_id,scope), FOREIGN KEY(resource_id,scope) REFERENCES oauth_resource_scopes(resource_id,scope))",
+    "CREATE TABLE oauth_resource_events (id TEXT PRIMARY KEY NOT NULL, event_kind TEXT NOT NULL, resource_audience TEXT NOT NULL, client_public_id TEXT, created_at TEXT NOT NULL)",
+    "ALTER TABLE authorization_codes ADD COLUMN resource_scope TEXT",
+    "ALTER TABLE oidc_access_tokens ADD COLUMN resource_scope TEXT",
+];
+
 const ADMIN_TOTP_REQUIRED_SCHEMA: &[&str] = &[
     "ALTER TABLE developer_administrators ADD COLUMN totp_required INTEGER NOT NULL DEFAULT 0 CHECK(totp_required IN (0,1))",
     "UPDATE developer_administrators SET totp_required = 1 WHERE totp_secret IS NOT NULL",
@@ -205,7 +213,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 14 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 15 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -444,6 +452,12 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
             tx.execute_raw(statement(sql)).await?;
         }
         tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (14)")).await?;
+    }
+
+    let has_v15 = tx.query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 15")).await?.is_some();
+    if !has_v15 {
+        for sql in RESOURCE_SECURITY_SCHEMA { tx.execute_raw(statement(sql)).await?; }
+        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (15)")).await?;
     }
 
     tx.commit().await
