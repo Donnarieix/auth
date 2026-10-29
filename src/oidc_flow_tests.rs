@@ -11,7 +11,10 @@ use rsa::{
     RsaPrivateKey,
     pkcs8::{EncodePrivateKey, LineEnding},
 };
-use sea_orm::{ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, DatabaseConnection, DbBackend, Statement};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, Database, DatabaseConnection, DbBackend,
+    Statement,
+};
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -51,7 +54,10 @@ async fn request(
         .unwrap()
 }
 
-async fn fixture_for(kind: ClientType, redirect: &str) -> (Router, String, String, Option<String>, DatabaseConnection) {
+async fn fixture_for(
+    kind: ClientType,
+    redirect: &str,
+) -> (Router, String, String, Option<String>, DatabaseConnection) {
     let db = Database::connect("sqlite::memory:").await.unwrap();
     schema::apply(&db).await.unwrap();
     let public_client = register_client(&db, "Test Client", kind, &[redirect.to_owned()])
