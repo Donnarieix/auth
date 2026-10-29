@@ -109,7 +109,7 @@ async fn fixture_for(kind: ClientType, redirect: &str) -> (Router, String, Strin
     let private = RsaPrivateKey::new(&mut rand_core::OsRng, 2048).unwrap();
     let pem = private.to_pkcs8_pem(LineEnding::LF).unwrap().to_string();
     let keys = SigningKeys::from_pem(ORIGIN, "integration-2026", &pem, &[]).unwrap();
-    let mut state = AppState::with_db(db);
+    let mut state = AppState::with_db(db.clone());
     state.security = SecurityConfig::for_origin(ORIGIN).unwrap();
     state.oidc_keys = Some(Arc::new(keys));
 
