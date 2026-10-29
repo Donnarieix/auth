@@ -1,7 +1,7 @@
 //! Administrative CLI only. No remote client registration or developer API.
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, EntityTrait, ModelTrait, Statement,
-    TransactionTrait,
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, EntityTrait, ModelTrait,
+    Statement, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
