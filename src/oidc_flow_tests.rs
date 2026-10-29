@@ -457,3 +457,99 @@ async fn invalid_clients_and_missing_browser_sessions_never_receive_codes() {
     .await;
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
 }
+
+
+#[tokio::test]
+async fn audience_bound_access_can_be_revoked_without_affecting_other_resources() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use sha2::{Digest, Sha256};
+
+    let redirect = "https://rp.example.test/callback";
+    let (app, client, cookie, secret, db) = fixture_for(ClientType::Web, redirect).await;
+    let resource_a = "https://api-a.example.test";
+    let resource_b = "https://api-b.example.test";
+    let server_secret = "r".repeat(43);
+
+    for resource in [resource_a, resource_b] {
+        let id = Uuid::new_v4().to_string();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
+            [id.clone().into(), resource.to_owned().into(), "API".into(),
+             Sha256::digest(server_secret.as_bytes()).to_vec().into()],
+        )).await.unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_client_resources(client_id,resource_id) SELECT id,? FROM clients WHERE client_id=?",
+            [id.clone().into(),client.clone().into()],
+        )).await.unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_resource_scopes(resource_id,scope) VALUES(?,?)",
+            [id.clone().into(),"records:read".into()],
+        )).await.unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_client_resource_scopes(client_id,resource_id,scope) SELECT id,?,? FROM clients WHERE client_id=?",
+            [id.into(),"records:read".into(),client.clone().into()],
+        )).await.unwrap();
+    }
+    let form = format!("{}&resource={}&resource_scope=records%3Aread",
+        authorization_form_for(&client,redirect),
+        url::form_urlencoded::byte_serialize(resource_a.as_bytes()).collect::<String>());
+    let approve = request(&app,Method::POST,"/authorize/approve",form,&[
+        ("origin",ORIGIN),("cookie",&cookie),("content-type","application/x-www-form-urlencoded"),
+    ]).await;
+    assert_eq!(approve.status(),StatusCode::SEE_OTHER);
+    let destination = url::Url::parse(approve.headers()[header::LOCATION].to_str().unwrap()).unwrap();
+    let code = destination.query_pairs().find(|(k,_)| k=="code").unwrap().1.to_string();
+    let secret = secret.unwrap();
+    let basic = STANDARD.encode(format!("{client}:{secret}"));
+    let exchange = request(&app,Method::POST,"/token",
+        token_form_for(&client,redirect,&code,VERIFIER),&[
+            ("content-type","application/x-www-form-urlencoded"),
+            ("authorization",&format!("Basic {basic}")),
+        ]).await;
+    assert_eq!(exchange.status(),StatusCode::OK);
+    let issued: serde_json::Value = serde_json::from_slice(
+        &to_bytes(exchange.into_body(),100_000).await.unwrap()).unwrap();
+    let token = issued["access_token"].as_str().unwrap();
+    let inspect_form = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("token",token).finish();
+    for (audience, expected) in [(resource_a,true),(resource_b,false)] {
+        let resource_basic = STANDARD.encode(format!("{audience}:{server_secret}"));
+        let inspect = request(&app,Method::POST,"/introspect",inspect_form.clone(),&[
+            ("content-type","application/x-www-form-urlencoded"),
+            ("authorization",&format!("Basic {resource_basic}")),
+        ]).await;
+        assert_eq!(inspect.status(),StatusCode::OK);
+        let data: serde_json::Value = serde_json::from_slice(
+            &to_bytes(inspect.into_body(),100_000).await.unwrap()).unwrap();
+        assert_eq!(data["active"],expected);
+        if expected {
+            assert_eq!(data["aud"],resource_a);
+            assert_eq!(data["resource_scope"],"records:read");
+        }
+    }
+    let revoked = request(&app,Method::POST,
+        &format!("/account/consents/{client}/revoke"),String::new(),&[
+            ("origin",ORIGIN),("cookie",&cookie),
+        ]).await;
+    assert_eq!(revoked.status(),StatusCode::NO_CONTENT);
+    let resource_basic = STANDARD.encode(format!("{resource_a}:{server_secret}"));
+    let inspect = request(&app,Method::POST,"/introspect",inspect_form,&[
+        ("content-type","application/x-www-form-urlencoded"),
+        ("authorization",&format!("Basic {resource_basic}")),
+    ]).await;
+    let data: serde_json::Value = serde_json::from_slice(
+        &to_bytes(inspect.into_body(),100_000).await.unwrap()).unwrap();
+    assert_eq!(data["active"],false);
+    let feed = request(&app,Method::POST,"/session/events","after=0".into(),&[
+        ("content-type","application/x-www-form-urlencoded"),
+        ("authorization",&format!("Basic {basic}")),
+    ]).await;
+    assert_eq!(feed.status(),StatusCode::OK);
+    let events: serde_json::Value = serde_json::from_slice(
+        &to_bytes(feed.into_body(),100_000).await.unwrap()).unwrap();
+    assert_eq!(events["events"][0]["reason"],"consent_revoked");
+}
