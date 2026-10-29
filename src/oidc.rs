@@ -24,6 +24,8 @@ pub struct AuthorizationRequest {
     pub scope: String,
     #[serde(default)]
     pub resource: Option<String>,
+    #[serde(default)]
+    pub resource_scope: Option<String>,
     pub state: String,
     pub nonce: String,
     pub code_challenge: String,
@@ -90,6 +92,18 @@ pub async fn validate_authorization_request(
             [app.id.to_string().into(), resource.clone().into()],
         )).await?;
         if allowed.is_none() { return Err(AuthorizationError::InvalidClient); }
+    }
+    if let Some(scope) = &request.resource_scope {
+        let Some(resource) = &request.resource else { return Err(AuthorizationError::InvalidScope); };
+        if scope.len() > 512 || scope.is_empty() { return Err(AuthorizationError::InvalidScope); }
+        let scopes: Vec<_> = scope.split_whitespace().collect();
+        if scopes.is_empty() || scopes.len() > 16 || scopes.iter().any(|s| s.is_empty() || s.len() > 64 || !s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b,b':'|b'.'|b'_'|b'-'))) || scopes.iter().collect::<std::collections::HashSet<_>>().len() != scopes.len() { return Err(AuthorizationError::InvalidScope); }
+        for item in scopes {
+            let permitted = db.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+            "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id = crs.resource_id WHERE crs.client_id = ? AND r.audience = ? AND r.active = 1 AND crs.scope = ?",
+            [app.id.to_string().into(), resource.clone().into(), item.to_owned().into()])).await?;
+            if permitted.is_none() { return Err(AuthorizationError::InvalidScope); }
+        }
     }
     if request.response_type != "code" {
         return Err(AuthorizationError::UnsupportedResponseType);
@@ -175,6 +189,7 @@ mod tests {
             redirect_uri: redirect,
             scope: "openid profile email".into(),
             resource: None,
+            resource_scope: None,
             state: "opaque_state_123456789".into(),
             nonce: "opaque_nonce_123456789".into(),
             code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM".into(),
