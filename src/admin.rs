@@ -198,6 +198,18 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         {
             rotate_administrator_token(&db, username).await?;
         }
+        [command, action] if command == "resource" && action == "list" => {
+            for row in db.query_all_raw(Statement::from_string(
+                DbBackend::Sqlite,
+                "SELECT id,audience,name,active FROM oauth_resources ORDER BY audience".to_owned(),
+            )).await? {
+                let id: String = row.try_get("", "id")?;
+                let audience: String = row.try_get("", "audience")?;
+                let name: String = row.try_get("", "name")?;
+                let active: bool = row.try_get("", "active")?;
+                println!("{id} | {audience} | {name} | active={active}");
+            }
+        }
         [command, action, audience, scope] if command == "resource" && action == "scope" => {
             if scope.is_empty() || scope.len() > 64 || !scope.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b,b':'|b'.'|b'_'|b'-')) {
                 return Err("Invalid resource permission".into());
