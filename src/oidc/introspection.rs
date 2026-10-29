@@ -40,6 +40,8 @@ pub struct IntrospectionResponse {
     token_type: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     aud: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resource_scope: Option<String>,
 }
 
 impl IntrospectionResponse {
@@ -53,6 +55,7 @@ impl IntrospectionResponse {
             iat: None,
             token_type: None,
             aud: None,
+            resource_scope: None,
         }
     }
 }
@@ -155,6 +158,7 @@ pub async fn introspect(
         iat: Some(access.created_at.timestamp()),
         token_type: Some("Bearer"),
         aud: access.audience,
+        resource_scope: access.resource_scope,
     }))
 }
 
