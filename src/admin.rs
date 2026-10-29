@@ -1,6 +1,6 @@
 //! Administrative CLI only. No remote client registration or developer API.
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait, ModelTrait, Statement,
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, DbErr, EntityTrait, ModelTrait, Statement,
     TransactionTrait,
 };
 use sha2::{Digest, Sha256};
@@ -15,6 +15,20 @@ use crate::{
         session::generate_token,
     },
 };
+
+async fn audit_resource<C: ConnectionTrait>(
+    connection: &C,
+    kind: &str,
+    audience: &str,
+    client: Option<&str>,
+) -> Result<(), DbErr> {
+    connection.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO oauth_resource_events(id,event_kind,resource_audience,client_public_id,created_at) VALUES(?,?,?,?,?)",
+        [Uuid::new_v4().to_string().into(),kind.into(),audience.into(),client.into(),chrono::Utc::now().to_rfc3339().into()],
+    )).await?;
+    Ok(())
+}
 
 async fn db() -> Result<DatabaseConnection, Box<dyn std::error::Error>> {
     std::fs::create_dir_all("data")?;
@@ -241,7 +255,8 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 return Err("Resource audience must be a canonical HTTPS URL without query, fragment or credentials".into());
             }
             let (secret, _) = generate_token();
-            db.execute_raw(Statement::from_sql_and_values(
+            let tx = db.begin().await?;
+            tx.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
                 [
@@ -253,6 +268,8 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             )).await?;
             println!("Resource audience: {audience}");
             println!("Resource introspection secret (displayed once): {secret}");
+            audit_resource(&tx, "resource_created", audience, None).await?;
+            tx.commit().await?;
         }
         [command, action, operation, audience] if command == "resource" && action == "secret" && operation == "rotate" => {
             let (secret, _) = generate_token();
@@ -263,6 +280,8 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             )).await?;
             if result.rows_affected() != 1 { return Err("Unknown resource".into()); }
             println!("Rotated resource secret (displayed once): {secret}");
+            audit_resource(&tx, "resource_secret_rotated", audience, None).await?;
+            tx.commit().await?;
         }
         [command, action, client_id, audience] if command == "resource" && action == "allow" => {
             let result = db.execute_raw(Statement::from_sql_and_values(
@@ -272,31 +291,39 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             )).await?;
             if result.rows_affected() != 1 { return Err("Unknown client/resource or already allowed".into()); }
             println!("Client permitted to request resource");
+            audit_resource(&tx, "client_link_allowed", audience, Some(client_id)).await?;
+            tx.commit().await?;
         }
         [command, action, client_id, audience] if command == "resource" && action == "deny" => {
-            db.execute_raw(Statement::from_sql_and_values(
+            let tx = db.begin().await?;
+            tx.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "DELETE FROM oauth_client_resources WHERE client_id = (SELECT id FROM clients WHERE client_id = ?) AND resource_id = (SELECT id FROM oauth_resources WHERE audience = ?)",
                 [client_id.to_owned().into(), audience.to_owned().into()],
             )).await?;
-            db.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE oidc_access_tokens SET revoked = 1 WHERE client_id = (SELECT id FROM clients WHERE client_id = ?) AND audience = ?",
                 [client_id.to_owned().into(), audience.to_owned().into()],
             )).await?;
             println!("Client resource access denied; existing tokens revoked");
+            audit_resource(&tx, "client_link_denied", audience, Some(client_id)).await?;
+            tx.commit().await?;
         }
         [command, action, audience] if command == "resource" && action == "disable" => {
-            db.execute_raw(Statement::from_sql_and_values(
+            let tx = db.begin().await?;
+            tx.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE oauth_resources SET active = 0 WHERE audience = ?",
                 [audience.to_owned().into()],
             )).await?;
-            db.execute_raw(Statement::from_sql_and_values(
+            tx.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "UPDATE oidc_access_tokens SET revoked = 1 WHERE audience = ?",
                 [audience.to_owned().into()],
             )).await?;
+            audit_resource(&tx, "resource_disabled", audience, None).await?;
+            tx.commit().await?;
         }
         [command, action, kind, name, redirects @ ..] if command == "client" && action == "add" => {
             let kind = ClientType::parse(kind).ok_or("Type must be web or desktop")?;
