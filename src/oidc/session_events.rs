@@ -86,7 +86,7 @@ pub async fn events(
             .try_get("", "reason")
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         cursor = id;
-        events.push(RevocationEvent { id, sub, reason });
+        events.push(RevocationEvent { id, sub: sub.to_string(), reason });
     }
     Ok(Json(Revocations {
         events,
