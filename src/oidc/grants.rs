@@ -93,6 +93,9 @@ pub async fn issue(
         return Err(GrantError::InvalidRequest);
     }
 
+    if !consent::approved_resource(&tx, account.id, app.id, request.resource.as_deref(), request.resource_scope.as_deref()).await? {
+        return Err(GrantError::InvalidRequest);
+    }
     let (code, hash) = generate_token();
     authorization_code::ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -208,6 +211,9 @@ pub async fn redeem(
         return Err(GrantError::InvalidGrant);
     }
 
+    if !consent::approved_resource(&tx, account.id, app.id, record.audience.as_deref(), record.resource_scope.as_deref()).await? {
+        return Err(GrantError::InvalidGrant);
+    }
     let result = authorization_code::Entity::update_many()
         .col_expr(authorization_code::COLUMN.consumed_at, Expr::value(now))
         .filter(authorization_code::COLUMN.id.eq(record.id))
