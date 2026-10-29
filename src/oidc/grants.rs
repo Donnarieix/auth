@@ -33,6 +33,7 @@ pub struct RedeemedGrant {
     pub client_id: String,
     pub scope: String,
     pub resource: Option<String>,
+    pub resource_scope: Option<String>,
     pub nonce: String,
     pub auth_time: chrono::DateTime<Utc>,
 }
@@ -102,6 +103,7 @@ pub async fn issue(
         redirect_uri: Set(request.redirect_uri.clone()),
         scope: Set(request.scope.clone()),
         audience: Set(request.resource.clone()),
+        resource_scope: Set(request.resource_scope.clone()),
         nonce: Set(request.nonce.clone()),
         code_challenge: Set(request.code_challenge.clone()),
         created_at: Set(now),
@@ -209,6 +211,7 @@ pub async fn redeem(
         client_id: app.client_id,
         scope: record.scope,
         resource: record.audience,
+        resource_scope: record.resource_scope,
         nonce: record.nonce,
         auth_time: browser.created_at,
     })
@@ -290,6 +293,7 @@ mod tests {
             redirect_uri: redirect,
             scope: "openid profile".into(),
             resource: None,
+            resource_scope: None,
             state: "unique-state-value-1234".into(),
             nonce: "unique-nonce-value-1234".into(),
             code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM".into(),
