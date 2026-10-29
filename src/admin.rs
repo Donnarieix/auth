@@ -25,7 +25,7 @@ async fn audit_resource<C: ConnectionTrait>(
     connection.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "INSERT INTO oauth_resource_events(id,event_kind,resource_audience,client_public_id,created_at) VALUES(?,?,?,?,?)",
-        [Uuid::new_v4().to_string().into(),kind.into(),audience.into(),client.into(),chrono::Utc::now().to_rfc3339().into()],
+        [Uuid::new_v4().to_string().into(),kind.into(),audience.into(),client.map(str::to_owned).into(),chrono::Utc::now().to_rfc3339().into()],
     )).await?;
     Ok(())
 }
