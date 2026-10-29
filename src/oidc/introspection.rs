@@ -188,7 +188,16 @@ pub async fn introspect(
     {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
-    if !consent::approved_resource(&state.db, account.id, token_client.id, access.audience.as_deref(), access.resource_scope.as_deref()).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)? {
+    if !consent::approved_resource(
+        &state.db,
+        account.id,
+        token_client.id,
+        access.audience.as_deref(),
+        access.resource_scope.as_deref(),
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
     if let (Some(audience), Some(scope)) = (&access.audience, &access.resource_scope) {
