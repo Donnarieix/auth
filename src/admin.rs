@@ -255,18 +255,20 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 return Err("Resource audience must be a canonical HTTPS URL without query, fragment or credentials".into());
             }
             let (secret, _) = generate_token();
+            let resource_id = Uuid::new_v4().to_string();
             let tx = db.begin().await?;
             tx.execute_raw(Statement::from_sql_and_values(
                 DbBackend::Sqlite,
                 "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
                 [
-                    Uuid::new_v4().to_string().into(),
+                    resource_id.clone().into(),
                     audience.to_owned().into(),
                     name.to_owned().into(),
                     Sha256::digest(secret.as_bytes()).to_vec().into(),
                 ],
             )).await?;
             println!("Resource audience: {audience}");
+            println!("Resource credential ID: {resource_id}");
             println!("Resource introspection secret (displayed once): {secret}");
             audit_resource(&tx, "resource_created", audience, None).await?;
             tx.commit().await?;
