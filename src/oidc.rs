@@ -6,6 +6,7 @@ pub mod consent;
 pub mod discovery;
 pub mod grants;
 pub mod introspection;
+pub mod session_events;
 pub mod signing;
 pub mod token;
 
