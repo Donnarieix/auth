@@ -259,7 +259,10 @@ mod tests {
         ))
         .await
         .unwrap();
-        assert_eq!(validate_authorization_request(&db, &request).await, Err(AuthorizationError::InvalidScope));
+        assert_eq!(
+            validate_authorization_request(&db, &request).await,
+            Err(AuthorizationError::InvalidScope)
+        );
         request.resource = None;
 
         request.redirect_uri = "https://attacker.example/callback".into();
