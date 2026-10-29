@@ -8,7 +8,7 @@ use axum::{
     response::Html,
 };
 use chrono::Utc;
-use sea_orm::{EntityTrait, QueryFilter, TransactionTrait, sea_query::Expr};
+use sea_orm::{ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement, TransactionTrait, sea_query::Expr};
 use serde::Serialize;
 
 use crate::{
@@ -82,6 +82,12 @@ pub async fn revoke(
     if affected.rows_affected == 0 {
         return Err(StatusCode::NOT_FOUND);
     }
+    // Consent revocation also invalidates every per-resource user consent.
+    tx.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "UPDATE oauth_resource_consents SET revoked_at=? WHERE user_id=? AND client_id=? AND revoked_at IS NULL",
+        [now.to_rfc3339().into(),account.id.to_string().into(),app.id.to_string().into()],
+    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     oidc_access_token::Entity::update_many()
         .col_expr(oidc_access_token::COLUMN.revoked, Expr::value(true))
         .filter(oidc_access_token::COLUMN.user_id.eq(account.id))
