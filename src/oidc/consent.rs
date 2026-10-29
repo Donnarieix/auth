@@ -2,8 +2,8 @@
 //! This module only persists or checks an explicit approval. No implicit grants.
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    QueryFilter, TransactionTrait, DbBackend, Statement, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, DbErr,
+    EntityTrait, QueryFilter, Statement, TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -72,15 +72,15 @@ pub async fn approve_request(
 ) -> Result<(), DbErr> {
     let requested = Scopes::parse(scope).map_err(|e| DbErr::Custom(e.into()))?;
     if resource.is_some() != resource_scope.is_some() {
-        return Err(DbErr::Custom("Resource and permissions must occur together".into()));
+        return Err(DbErr::Custom(
+            "Resource and permissions must occur together".into(),
+        ));
     }
     let now = Utc::now();
     let tx = db.begin().await?;
     let account = user::Entity::find_by_id(user_id).one(&tx).await?;
     let app = client::Entity::find_by_id(client_id).one(&tx).await?;
-    if !account.is_some_and(|u| u.active && u.email_verified)
-        || !app.is_some_and(|a| a.active)
-    {
+    if !account.is_some_and(|u| u.active && u.email_verified) || !app.is_some_and(|a| a.active) {
         return Err(DbErr::Custom("Account or client not authorized".into()));
     }
 
@@ -88,7 +88,10 @@ pub async fn approve_request(
         let requested_permissions: Vec<_> = permissions.split_whitespace().collect();
         if requested_permissions.is_empty()
             || requested_permissions.len() > 16
-            || requested_permissions.iter().collect::<std::collections::HashSet<_>>().len()
+            || requested_permissions
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
                 != requested_permissions.len()
         {
             return Err(DbErr::Custom("Invalid resource permissions".into()));
@@ -99,7 +102,9 @@ pub async fn approve_request(
                 "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
                 [client_id.to_string().into(), audience.to_owned().into(), (*permission).to_owned().into()],
             )).await?;
-            if allowed.is_none() { return Err(DbErr::Custom("Resource permission not allowed".into())); }
+            if allowed.is_none() {
+                return Err(DbErr::Custom("Resource permission not allowed".into()));
+            }
         }
         // Re-approval replaces (rather than accumulates) resource permissions.
         tx.execute_raw(Statement::from_sql_and_values(
@@ -117,7 +122,9 @@ pub async fn approve_request(
             "INSERT INTO oauth_resource_consents(user_id,client_id,resource_id,scope,approved_at,revoked_at) SELECT ?,?,id,?,?,NULL FROM oauth_resources WHERE audience=? AND active=1",
             [user_id.to_string().into(),client_id.to_string().into(),permissions.to_owned().into(),now.to_rfc3339().into(),audience.to_owned().into()],
         )).await?;
-        if inserted.rows_affected() != 1 { return Err(DbErr::Custom("Unknown resource".into())); }
+        if inserted.rows_affected() != 1 {
+            return Err(DbErr::Custom("Unknown resource".into()));
+        }
     }
 
     oidc_consent::Entity::delete_many()
@@ -133,7 +140,8 @@ pub async fn approve_request(
         approved_at: Set(now),
         revoked_at: Set(None),
     }
-    .insert(&tx).await?;
+    .insert(&tx)
+    .await?;
     tx.commit().await
 }
 
@@ -154,11 +162,15 @@ pub async fn approved_resource<C: ConnectionTrait>(
         "SELECT rc.scope FROM oauth_resource_consents rc JOIN oauth_resources r ON r.id=rc.resource_id WHERE rc.user_id=? AND rc.client_id=? AND r.audience=? AND r.active=1 AND rc.revoked_at IS NULL",
         [user_id.to_string().into(),client_id.to_string().into(),audience.to_owned().into()],
     )).await?;
-    let Some(record) = record else { return Ok(false); };
+    let Some(record) = record else {
+        return Ok(false);
+    };
     let saved: String = record.try_get("", "scope")?;
     let granted: std::collections::HashSet<_> = saved.split_whitespace().collect();
     Ok(!scope.split_whitespace().collect::<Vec<_>>().is_empty()
-        && scope.split_whitespace().all(|value| granted.contains(value)))
+        && scope
+            .split_whitespace()
+            .all(|value| granted.contains(value)))
 }
 
 pub async fn approved<C: ConnectionTrait>(
