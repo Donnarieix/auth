@@ -79,7 +79,7 @@ pub async fn events(
         let id: i64 = row
             .try_get("", "id")
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let sub: String = row
+        let sub: uuid::Uuid = row
             .try_get("", "user_id")
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         let reason: String = row
