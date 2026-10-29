@@ -502,10 +502,20 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
         .await?;
     }
 
-    let has_v17 = tx.query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 17")).await?.is_some();
+    let has_v17 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 17",
+        ))
+        .await?
+        .is_some();
     if !has_v17 {
-        for sql in SESSION_EVENT_SCHEMA { tx.execute_raw(statement(sql)).await?; }
-        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (17)")).await?;
+        for sql in SESSION_EVENT_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (17)",
+        ))
+        .await?;
     }
 
     tx.commit().await
