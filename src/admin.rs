@@ -246,8 +246,8 @@ pub async fn run(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
                 [client_id.to_owned().into(),audience.to_owned().into(),scope.to_owned().into()]
             )).await?;
             tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
-                "UPDATE oidc_access_tokens SET revoked=1 WHERE client_id=(SELECT id FROM clients WHERE client_id=?) AND audience=? AND (' ' || COALESCE(resource_scope,'') || ' ') LIKE ?",
-                [client_id.to_owned().into(),audience.to_owned().into(),format!("% {scope} %").into()]
+                "UPDATE oidc_access_tokens SET revoked=1 WHERE client_id=(SELECT id FROM clients WHERE client_id=?) AND audience=? AND instr(' ' || COALESCE(resource_scope,'') || ' ', ?) > 0",
+                [client_id.to_owned().into(),audience.to_owned().into(),format!(" {scope} ").into()]
             )).await?;
             tx.execute_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
                 "INSERT INTO oauth_resource_events(id,event_kind,resource_audience,client_public_id,created_at) VALUES(?,'permission_denied',?,?,?)",
