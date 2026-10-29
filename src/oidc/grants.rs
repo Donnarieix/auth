@@ -190,6 +190,15 @@ pub async fn redeem(
         if allowed.is_none() { return Err(GrantError::InvalidGrant); }
     }
 
+    if let (Some(audience), Some(scope)) = (&record.audience, &record.resource_scope) {
+        for permission in scope.split_whitespace() {
+            let valid = tx.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
+                [app.id.to_string().into(),audience.clone().into(),permission.to_owned().into()]
+            )).await?;
+            if valid.is_none() { return Err(GrantError::InvalidGrant); }
+        }
+    }
     // Consent may be revoked between authorization and code redemption.
     if !consent::approved(&tx, account.id, app.id, &record.scope).await? {
         return Err(GrantError::InvalidGrant);
