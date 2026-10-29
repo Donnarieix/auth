@@ -71,7 +71,7 @@ pub async fn events(
     let rows = state.db.query_all_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
         "SELECT id,user_id,reason FROM oauth_session_events WHERE client_id = ? AND id > ? ORDER BY id ASC LIMIT 100",
-        [app.id.to_string().into(),after.into()],
+        [app.id.into(),after.into()],
     )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let mut cursor = after;
     let mut events = Vec::with_capacity(rows.len());
