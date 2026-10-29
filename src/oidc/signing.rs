@@ -300,6 +300,8 @@ mod tests {
             SigningKeys::from_pem("https://auth.example.test", "active-2026", &pem, &[]).unwrap();
         let user = account();
         let mut grant = RedeemedGrant {
+            resource: None,
+            resource_scope: None,
             user_id: user.id,
             client_id: "client-1".into(),
             scope: "openid".into(),
@@ -389,6 +391,8 @@ mod tests {
         );
         let user = account();
         let grant = RedeemedGrant {
+            resource: None,
+            resource_scope: None,
             user_id: user.id,
             client_id: "client-1".into(),
             scope: "openid".into(),
@@ -417,6 +421,8 @@ mod tests {
             SigningKeys::from_pem("https://auth.example.test", "active-2026", &pem, &[]).unwrap();
         let mut user = account();
         let grant = RedeemedGrant {
+            resource: None,
+            resource_scope: None,
             user_id: user.id,
             client_id: "client-1".into(),
             scope: "openid".into(),
