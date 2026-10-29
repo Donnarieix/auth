@@ -64,6 +64,9 @@ pub async fn events(
     {
         return Err(StatusCode::UNAUTHORIZED);
     }
+    if !state.abuse.allow("oidc_logout_feed", client_id, 120, 60).await {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
     let after = form.after.unwrap_or(0);
     if after < 0 {
         return Err(StatusCode::BAD_REQUEST);
