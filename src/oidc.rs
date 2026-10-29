@@ -131,6 +131,9 @@ pub async fn validate_authorization_request(
             }
         }
     }
+    if request.resource.is_some() != request.resource_scope.is_some() {
+        return Err(AuthorizationError::InvalidScope);
+    }
     if request.response_type != "code" {
         return Err(AuthorizationError::UnsupportedResponseType);
     }
