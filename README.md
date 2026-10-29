@@ -340,3 +340,41 @@ mitigations, reliable back-channel logout/session coordination, admin audit
 events for resource changes, monitoring, key management and a real integration
 security review. The current resource flow is a groundwork implementation, not
 a claim of RFC 8707 certification or production interoperability.
+
+
+## API permission groundwork (migration v15)
+
+The API resource registry now includes resource-specific permissions, separate
+from OIDC identity scopes. Local operator commands:
+
+```sh
+cargo run -- resource scope https://api.example.com documents:read
+cargo run -- resource permission allow <oauth-client-id> https://api.example.com documents:read
+cargo run -- resource permission deny <oauth-client-id> https://api.example.com documents:read
+```
+
+A client may add `resource_scope=documents:read` only when the requested
+`resource` is registered, and the operator has allowed that exact permission
+for that client and API. These permissions are carried into the authorization
+code and opaque access token. The API receives `resource_scope` from
+introspection and must independently enforce the permission required by
+each route. Auth rechecks client/resource permission assignments at code
+redemption and introspection. Never interpret the `scope` identity field as
+authorization to read or change API data.
+
+**Security caveat:** consent is currently recorded per OAuth client and OIDC
+identity scopes; the resource permission display is not yet backed by an
+independent durable per-resource end-user consent record. Treat API permission
+grants as an experimental development feature, not an end-user delegated
+authorization release. In particular, the above operator assignment does
+not substitute for the user's explicit consent to a resource's data permissions.
+
+**Back-channel logout design:** An identity provider cannot invalidate a
+relying party's local sessions by changing its own database alone. A future
+production-compatible design must register an authenticated back-channel
+logout URI per confidential relying party, send signed logout tokens including
+issuer, audience, event, and session/subject binding, enforce replay and
+expiration, retry delivery safely, and implement matching session invalidation
+in every relying party. Public/native clients without reachable trusted
+backends require a separate short-lived session-status/revalidation strategy.
+Nothing in this branch should be presented as implementing coordinated logout.
