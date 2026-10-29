@@ -8,7 +8,10 @@ use axum::{
     response::Html,
 };
 use chrono::Utc;
-use sea_orm::{ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement, TransactionTrait, sea_query::Expr};
+use sea_orm::{
+    ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement, TransactionTrait,
+    sea_query::Expr,
+};
 use serde::Serialize;
 
 use crate::{
