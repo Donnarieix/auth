@@ -269,74 +269,130 @@ controlled local operator procedure; no bypass is available from the browser.
 This is not an independent security assessment or production certification.
 
 
-## Token introspection (development-only, restricted)
+## Generic protected API resources (experimental, migrations v14–v17)
 
-When signing keys are configured, `POST /introspect` implements an initial
-RFC 7662-style introspection endpoint. It accepts an
-`application/x-www-form-urlencoded` body with `token` and optional
-`token_type_hint`. The request MUST authenticate using
-`Authorization: Basic base64(client_id:client_secret)`.
+Donnarieix Auth distinguishes the OAuth client (web/desktop application) from
+a protected resource (an API). This is generic infrastructure and is **not**
+hard-coded for SEPPYL. The resource has a unique HTTPS `audience`, a generated
+opaque credential ID, and a secret that is shown once on a trusted terminal.
+Never embed resource secrets or confidential OAuth client secrets in JavaScript,
+mobile binaries, Dioxus Web/WASM, or desktop public clients.
 
-Only active, confidential `web` OAuth clients with a configured secret
-may introspect tokens **issued to the same OAuth client**. Unknown, expired,
-revoked or otherwise invalid tokens produce `{"active":false}`; failed
-client authentication produces 401. Successful results contain a user subject,
-client ID, scopes and timestamps. Responses must not be cached or logged with
-secrets. This endpoint is for trusted backends over HTTPS; never embed client
-secrets in browsers, mobile apps or desktop binaries.
-
-**Important limitation:** independent protected resource servers (APIs) are
-NOT registered as resource audiences yet. An API belonging to a public/mobile
-client cannot use this endpoint with its own credentials. Do not treat the
-current `client_id` restriction as a replacement for proper audience
-validation. Before adopting this for arbitrary apps and APIs, implement
-resource-server registration, audience-restricted access tokens, resource
-permissions/scopes, authenticated resource-server introspection and negative
-integration tests for cross-resource access and revocation. The signed ID
-token is for login only and MUST NOT be accepted as an API bearer token.
-Revoking a consent does not automatically expire pre-existing relying-party
-sessions; coordinated logout requires an additional protocol and client
-support.
-
-
-## Protected API resources (experimental, schema v14)
-
-Auth distinguishes OAuth applications (clients) from protected API audiences
-(resources). An API has its own secret, stored as a SHA-256 digest, and clients
-must be individually allowed to request an audience. Only an operator with
-local database access can change this registry:
+Operator setup:
 
 ```sh
-cargo run -- resource add https://api.example.com "Example API"
-cargo run -- resource allow <oauth-client-id> https://api.example.com
-cargo run -- resource deny <oauth-client-id> https://api.example.com
-cargo run -- resource secret rotate https://api.example.com
-cargo run -- resource disable https://api.example.com
+cargo run -- resource add https://api.example.test "Example API"
+cargo run -- resource list
+cargo run -- resource scope https://api.example.test documents:read
+cargo run -- resource scope https://api.example.test documents:write
+cargo run -- resource allow <oauth-client-id> https://api.example.test
+cargo run -- resource permission allow <oauth-client-id> https://api.example.test documents:read
 ```
 
-Record the resource secret shown once. Resource APIs must keep it on their own
-trusted backend; never ship it in Dioxus web bundles or mobile binaries.
-The resource sends `client_id:client_secret` via HTTP Basic to `/introspect`,
-using **its audience URI as the Basic username**, and verifies `active=true`
-and `aud` exactly matching that audience. The introspection result includes
-the OAuth client ID, stable user subject and approved identity scopes. An
-introspection response must not be used without its required audience match.
-The resource secret grants introspection rights, not arbitrary OAuth consent.
+The `add` command prints the **resource credential ID** and a one-time secret.
+Resource credential IDs are distinct from audience URLs: URLs contain a colon
+and are **not** valid HTTP Basic usernames. Save both values securely.
+The operator can later revoke an individual permission, remove a client link,
+disable a resource, or rotate its backend secret:
 
-OAuth clients optionally send `resource=https://api.example.com` on
-`/authorize` (the registered resource is carried through the consent form and
-single-use code exchange). Tokens issued without `resource` remain usable
-only by their original confidential client for legacy introspection; they
-must **not** be accepted by registered resource APIs. Each resource token is
-valid for just one audience. Revoking user consent, disabling a resource or
-removing a client-resource link revokes matching outstanding access tokens.
-For a desktop public client the resource secret belongs strictly on the API
-backend, while PKCE remains mandatory for the frontend.
+```sh
+cargo run -- resource permission deny <oauth-client-id> https://api.example.test documents:read
+cargo run -- resource deny <oauth-client-id> https://api.example.test
+cargo run -- resource secret rotate https://api.example.test
+cargo run -- resource disable https://api.example.test
+```
 
-**Still to complete before production:** API-specific delegated scopes (the
-current scopes are OIDC identity scopes only), user-facing display/approval of
-each resource's permissions, proof-of-possession or other bearer-token theft
-mitigations, reliable back-channel logout/session coordination, admin audit
-events for resource changes, monitoring, key management and a real integration
-security review. The current resource flow is a groundwork implementation, not
-a claim of RFC 8707 certification or production interoperability.
+These operations are recorded in `oauth_resource_events` and, where relevant,
+revoke matching access tokens. The resource registry is managed locally rather
+than through an unauthenticated registration API.
+
+### Authorization and token issuance
+
+OAuth clients send the usual OpenID Connect Authorization Code + PKCE
+parameters. A client requesting API access additionally sends:
+
+```text
+resource=https://api.example.test
+resource_scope=documents:read
+```
+
+`resource_scope` is an **experimental Auth extension**, not a standard OAuth
+scope encoding. Both fields are required together. API permissions must exist
+and have been granted to the requesting client by the operator. The consent
+page displays the exact requested audience and permissions; user approval is
+stored separately in `oauth_resource_consents` (v16). Identity scopes remain
+`openid`, `profile` and `email`.
+
+At code redemption and during token introspection, Auth rechecks the user's
+approval, the resource's active state, and the client's operator-assigned
+permissions. The resulting opaque access token is valid for 5 minutes and has
+a single audience. The signed **ID token is for login, not for API access**.
+Tokens issued without a resource have no API audience and must be rejected by
+registered protected resource servers.
+
+### API verification (RFC 7662-style introspection)
+
+A trusted API backend introspects a bearer token with:
+
+```http
+POST /introspect
+Authorization: Basic base64(RESOURCE_CREDENTIAL_ID:RESOURCE_SECRET)
+Content-Type: application/x-www-form-urlencoded
+
+token=OPAQUE_ACCESS_TOKEN
+```
+
+The request must use HTTPS except in the exact local loopback development
+environment. Never log bearer tokens or secrets. The API **must** verify that
+`active=true`, `aud` equals its registered audience and `resource_scope`
+contains the required permission for the route. An access token for API A
+must return `active=false` to API B, even if both APIs are registered for the
+same application.
+
+A confidential OAuth web client can also introspect tokens issued directly
+to that same client, using its own OAuth client credentials. That introspection
+does not grant it the right to inspect another application's access tokens.
+
+### Consent revocation and local application sessions
+
+Removing an application's authorization from the user's Auth account revokes
+OIDC consent, per-resource user consents, and its outstanding access tokens.
+Protected APIs consulting introspection therefore reject the revoked token.
+**An application-owned local session does not disappear automatically.**
+
+For trusted confidential web relying parties, Auth additionally exposes a
+durable **logout event feed**:
+
+```http
+POST /session/events
+Authorization: Basic base64(OAUTH_WEB_CLIENT_ID:OAUTH_CLIENT_SECRET)
+Content-Type: application/x-www-form-urlencoded
+
+after=0
+```
+
+The response contains `events` with `id`, `sub` and `reason`, plus
+`next_cursor`. The web application's backend periodically polls and persists
+its cursor, then invalidates local sessions for the returned `sub`. Events are
+written for user consent withdrawal, password reset and account deactivation.
+The feed is scoped to the authenticated client. Consumers must process
+duplicate events safely and fail closed on prolonged Auth connectivity loss.
+Public/native clients cannot use this shared-secret endpoint, and must rely
+on short-lived API authorization plus their own revalidation strategy.
+
+**This is a polling-based session invalidation interface, not the standard
+OIDC Back-Channel Logout protocol**. A production implementation of the
+standard would require signed logout tokens, registered callback URIs,
+replay protection, delivery retries and verified relying-party session
+handlers. None of those features is implied by this event feed.
+
+### Development status and verification
+
+The existing black-box test client validates basic OIDC login and logout.
+The Auth CI suite additionally exercises confidential introspection, API
+audience isolation, resource permission consent and post-revocation behavior.
+These checks are necessary but not sufficient for public deployment.
+An external security audit, load testing, monitoring, rate-limit review,
+key and secret lifecycle controls, and a multi-application rollout remain
+required. Do not deploy this prototype as an internet-facing identity
+provider without those operational safeguards.

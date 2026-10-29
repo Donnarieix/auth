@@ -7,7 +7,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use chrono::Utc;
-use sea_orm::{ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -40,6 +40,8 @@ pub struct IntrospectionResponse {
     token_type: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     aud: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resource_scope: Option<String>,
 }
 
 impl IntrospectionResponse {
@@ -53,6 +55,7 @@ impl IntrospectionResponse {
             iat: None,
             token_type: None,
             aud: None,
+            resource_scope: None,
         }
     }
 }
@@ -71,49 +74,91 @@ pub async fn introspect(
         return Err(StatusCode::UNAUTHORIZED);
     };
     use base64::{Engine as _, engine::general_purpose::STANDARD};
-    let decoded = STANDARD.decode(encoded).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let decoded = STANDARD
+        .decode(encoded)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
     let credentials = std::str::from_utf8(&decoded).map_err(|_| StatusCode::UNAUTHORIZED)?;
-    let (client_id, _) = credentials.split_once(':').ok_or(StatusCode::UNAUTHORIZED)?;
+    let (client_id, _) = credentials
+        .split_once(':')
+        .ok_or(StatusCode::UNAUTHORIZED)?;
     if client_id.len() > 256 {
         return Err(StatusCode::UNAUTHORIZED);
     }
     // Resource servers authenticate separately from OAuth clients. Their
     // credentials never authorize them to read another resource's tokens.
-    let resource = state.db.query_one_raw(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        "SELECT audience,secret_hash FROM oauth_resources WHERE audience = ? AND active = 1",
-        [client_id.to_owned().into()],
-    )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let resource = state
+        .db
+        .query_one_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "SELECT audience,secret_hash FROM oauth_resources WHERE id = ? AND active = 1",
+            [client_id.to_owned().into()],
+        ))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let is_resource = if let Some(row) = resource.as_ref() {
-        let stored: Vec<u8> = row.try_get("", "secret_hash").map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let provided = credentials.split_once(':').map(|(_, secret)| secret).unwrap_or("");
+        let stored: Vec<u8> = row
+            .try_get("", "secret_hash")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let provided = credentials
+            .split_once(':')
+            .map(|(_, secret)| secret)
+            .unwrap_or("");
         let digest = Sha256::digest(provided.as_bytes());
-        provided.len() == 43 && stored.len() == 32 && digest.iter()
-            .zip(stored.iter()).fold(0u8, |acc, (a,b)| acc | (a ^ b)) == 0
-    } else { false };
-    let app = if is_resource { None } else {
+        provided.len() == 43
+            && stored.len() == 32
+            && digest
+                .iter()
+                .zip(stored.iter())
+                .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                == 0
+    } else {
+        false
+    };
+    let app = if is_resource {
+        None
+    } else {
         let app = client::Entity::find()
             .filter(client::Column::ClientId.eq(client_id))
             .filter(client::Column::Active.eq(true))
-            .one(&state.db).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .one(&state.db)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .filter(|app| app.client_type == "web")
             .ok_or(StatusCode::UNAUTHORIZED)?;
-        if !app.client_secret_hash.as_deref().is_some_and(|hash| {
-            valid_web_client_secret(&headers, client_id, hash)
-        }) { return Err(StatusCode::UNAUTHORIZED); }
+        if !app
+            .client_secret_hash
+            .as_deref()
+            .is_some_and(|hash| valid_web_client_secret(&headers, client_id, hash))
+        {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
         Some(app)
     };
-    if resource.is_some() && !is_resource { return Err(StatusCode::UNAUTHORIZED); }
+    if resource.is_some() && !is_resource {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
-    if form.token.len() != 43 || !form.token.is_ascii()
-        || form.token_type_hint.as_deref().is_some_and(|hint| hint.len() > 64)
+    if !state
+        .abuse
+        .allow("oidc_introspection", client_id, 120, 60)
+        .await
+    {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    if form.token.len() != 43
+        || !form.token.is_ascii()
+        || form
+            .token_type_hint
+            .as_deref()
+            .is_some_and(|hint| hint.len() > 64)
     {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
     let hash = Sha256::digest(form.token.as_bytes()).to_vec();
     let Some(access) = oidc_access_token::Entity::find()
         .filter(oidc_access_token::Column::TokenHash.eq(hash))
-                .filter(oidc_access_token::Column::Revoked.eq(false))
+        .filter(oidc_access_token::Column::Revoked.eq(false))
         .one(&state.db)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
@@ -123,7 +168,12 @@ pub async fn introspect(
     if !is_resource && app.as_ref().is_none_or(|app| access.client_id != app.id) {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
-    if is_resource && access.audience.as_deref() != Some(client_id) {
+    let resource_audience: Option<String> = resource
+        .as_ref()
+        .map(|row| row.try_get("", "audience"))
+        .transpose()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if is_resource && access.audience.as_deref() != resource_audience.as_deref() {
         return Ok(Json(IntrospectionResponse::inactive()));
     }
     if access.expires_at <= Utc::now() {
@@ -137,14 +187,42 @@ pub async fn introspect(
     else {
         return Ok(Json(IntrospectionResponse::inactive()));
     };
-    let Some(token_client) = client::Entity::find_by_id(access.client_id).one(&state.db)
-        .await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .filter(|app| app.active) else { return Ok(Json(IntrospectionResponse::inactive())); };
+    let Some(token_client) = client::Entity::find_by_id(access.client_id)
+        .one(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .filter(|app| app.active)
+    else {
+        return Ok(Json(IntrospectionResponse::inactive()));
+    };
     if !consent::approved(&state.db, account.id, token_client.id, &access.scope)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     {
         return Ok(Json(IntrospectionResponse::inactive()));
+    }
+    if !consent::approved_resource(
+        &state.db,
+        account.id,
+        token_client.id,
+        access.audience.as_deref(),
+        access.resource_scope.as_deref(),
+    )
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        return Ok(Json(IntrospectionResponse::inactive()));
+    }
+    if let (Some(audience), Some(scope)) = (&access.audience, &access.resource_scope) {
+        for permission in scope.split_whitespace() {
+            let permitted = state.db.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
+                [token_client.id.into(),audience.clone().into(),permission.to_owned().into()]
+            )).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            if permitted.is_none() {
+                return Ok(Json(IntrospectionResponse::inactive()));
+            }
+        }
     }
     Ok(Json(IntrospectionResponse {
         active: true,
@@ -155,6 +233,7 @@ pub async fn introspect(
         iat: Some(access.created_at.timestamp()),
         token_type: Some("Bearer"),
         aud: access.audience,
+        resource_scope: access.resource_scope,
     }))
 }
 

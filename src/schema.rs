@@ -186,6 +186,26 @@ const RESOURCE_SCHEMA: &[&str] = &[
     "ALTER TABLE authorization_codes ADD COLUMN audience TEXT",
 ];
 
+const RESOURCE_SECURITY_SCHEMA: &[&str] = &[
+    "CREATE TABLE oauth_resource_scopes (resource_id TEXT NOT NULL REFERENCES oauth_resources(id) ON DELETE CASCADE, scope TEXT NOT NULL, PRIMARY KEY(resource_id,scope))",
+    "CREATE TABLE oauth_client_resource_scopes (client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES oauth_resources(id) ON DELETE CASCADE, scope TEXT NOT NULL, PRIMARY KEY(client_id,resource_id,scope), FOREIGN KEY(resource_id,scope) REFERENCES oauth_resource_scopes(resource_id,scope))",
+    "CREATE TABLE oauth_resource_events (id TEXT PRIMARY KEY NOT NULL, event_kind TEXT NOT NULL, resource_audience TEXT NOT NULL, client_public_id TEXT, created_at TEXT NOT NULL)",
+    "ALTER TABLE authorization_codes ADD COLUMN resource_scope TEXT",
+    "ALTER TABLE oidc_access_tokens ADD COLUMN resource_scope TEXT",
+];
+
+const RESOURCE_USER_CONSENT_SCHEMA: &[&str] = &[
+    "CREATE TABLE oauth_resource_consents (user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES oauth_resources(id) ON DELETE CASCADE, scope TEXT NOT NULL, approved_at TEXT NOT NULL, revoked_at TEXT, PRIMARY KEY(user_id,client_id,resource_id))",
+    "CREATE INDEX oauth_resource_consents_client_idx ON oauth_resource_consents(client_id,resource_id)",
+];
+
+const SESSION_EVENT_SCHEMA: &[&str] = &[
+    "CREATE TABLE oauth_session_events (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, reason TEXT NOT NULL, created_at TEXT NOT NULL)",
+    "CREATE INDEX oauth_session_events_client_idx ON oauth_session_events(client_id,id)",
+    "CREATE TRIGGER oauth_user_disabled_session_event AFTER UPDATE OF active ON users FOR EACH ROW WHEN NEW.active=0 AND OLD.active<>NEW.active BEGIN INSERT INTO oauth_session_events(client_id,user_id,reason,created_at) SELECT c.client_id,c.user_id,'account_disabled',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM oidc_consents c WHERE c.user_id=NEW.id; END",
+    "CREATE TRIGGER oauth_password_reset_session_event AFTER UPDATE OF password_hash ON password_credentials BEGIN INSERT INTO oauth_session_events(client_id,user_id,reason,created_at) SELECT c.client_id,c.user_id,'password_reset',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM oidc_consents c WHERE c.user_id=NEW.user_id; END",
+];
+
 const ADMIN_TOTP_REQUIRED_SCHEMA: &[&str] = &[
     "ALTER TABLE developer_administrators ADD COLUMN totp_required INTEGER NOT NULL DEFAULT 0 CHECK(totp_required IN (0,1))",
     "UPDATE developer_administrators SET totp_required = 1 WHERE totp_secret IS NOT NULL",
@@ -205,7 +225,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 14 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 17 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -436,14 +456,67 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
     }
 
     let has_v14 = tx
-        .query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 14"))
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 14",
+        ))
         .await?
         .is_some();
     if !has_v14 {
         for sql in RESOURCE_SCHEMA {
             tx.execute_raw(statement(sql)).await?;
         }
-        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (14)")).await?;
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (14)",
+        ))
+        .await?;
+    }
+
+    let has_v15 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 15",
+        ))
+        .await?
+        .is_some();
+    if !has_v15 {
+        for sql in RESOURCE_SECURITY_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (15)",
+        ))
+        .await?;
+    }
+
+    let has_v16 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 16",
+        ))
+        .await?
+        .is_some();
+    if !has_v16 {
+        for sql in RESOURCE_USER_CONSENT_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (16)",
+        ))
+        .await?;
+    }
+
+    let has_v17 = tx
+        .query_one_raw(statement(
+            "SELECT version FROM schema_migrations WHERE version = 17",
+        ))
+        .await?
+        .is_some();
+    if !has_v17 {
+        for sql in SESSION_EVENT_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement(
+            "INSERT INTO schema_migrations (version) VALUES (17)",
+        ))
+        .await?;
     }
 
     tx.commit().await

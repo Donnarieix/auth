@@ -83,7 +83,14 @@ fn hidden_request(req: &AuthorizationRequest) -> String {
         hidden("client_id", &req.client_id),
         hidden("redirect_uri", &req.redirect_uri),
         hidden("scope", &req.scope),
-        req.resource.as_ref().map(|r| hidden("resource", r)).unwrap_or_default(),
+        req.resource
+            .as_ref()
+            .map(|r| hidden("resource", r))
+            .unwrap_or_default(),
+        req.resource_scope
+            .as_ref()
+            .map(|r| hidden("resource_scope", r))
+            .unwrap_or_default(),
         hidden("state", &req.state),
         hidden("nonce", &req.nonce),
         hidden("code_challenge", &req.code_challenge),
@@ -124,11 +131,18 @@ pub async fn authorization_page(
         );
     }
     let fields = hidden_request(&request);
-    let resource_display = request.resource.as_deref().map(|resource| {
-        format!("<p>Protected API: <code>{}</code></p>", escape(resource))
-    }).unwrap_or_default();
+    let resource_display = request
+        .resource
+        .as_deref()
+        .map(|resource| format!("<p>Protected API: <code>{}</code></p>", escape(resource)))
+        .unwrap_or_default();
+    let permissions_display = request
+        .resource_scope
+        .as_deref()
+        .map(|scope| format!("<p>API permissions: <code>{}</code></p>", escape(scope)))
+        .unwrap_or_default();
     let details = format!(
-        "<p>Application: <strong>{}</strong></p><p>Requested permissions: <code>{}</code></p>{resource_display}",
+        "<p>Application: <strong>{}</strong></p><p>Requested permissions: <code>{}</code></p>{resource_display}{permissions_display}",
         escape(&app.name),
         escape(&request.scope),
     );
@@ -228,9 +242,16 @@ pub async fn approve(
             "Unsupported or unconfigured client.",
         );
     }
-    if crate::oidc::consent::approve(&state.db, account.id, app.id, &request.scope)
-        .await
-        .is_err()
+    if crate::oidc::consent::approve_request(
+        &state.db,
+        account.id,
+        app.id,
+        &request.scope,
+        request.resource.as_deref(),
+        request.resource_scope.as_deref(),
+    )
+    .await
+    .is_err()
     {
         return error_page(
             StatusCode::INTERNAL_SERVER_ERROR,

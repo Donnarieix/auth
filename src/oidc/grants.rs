@@ -3,8 +3,8 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
-    TransactionTrait, ConnectionTrait, DbBackend, Statement, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, DbErr,
+    EntityTrait, QueryFilter, Statement, TransactionTrait, sea_query::Expr,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -33,6 +33,7 @@ pub struct RedeemedGrant {
     pub client_id: String,
     pub scope: String,
     pub resource: Option<String>,
+    pub resource_scope: Option<String>,
     pub nonce: String,
     pub auth_time: chrono::DateTime<Utc>,
 }
@@ -92,6 +93,17 @@ pub async fn issue(
         return Err(GrantError::InvalidRequest);
     }
 
+    if !consent::approved_resource(
+        &tx,
+        account.id,
+        app.id,
+        request.resource.as_deref(),
+        request.resource_scope.as_deref(),
+    )
+    .await?
+    {
+        return Err(GrantError::InvalidRequest);
+    }
     let (code, hash) = generate_token();
     authorization_code::ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -102,6 +114,7 @@ pub async fn issue(
         redirect_uri: Set(request.redirect_uri.clone()),
         scope: Set(request.scope.clone()),
         audience: Set(request.resource.clone()),
+        resource_scope: Set(request.resource_scope.clone()),
         nonce: Set(request.nonce.clone()),
         code_challenge: Set(request.code_challenge.clone()),
         created_at: Set(now),
@@ -183,16 +196,40 @@ pub async fn redeem(
         let allowed = tx.query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
             "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = ? AND r.audience = ? AND r.active = 1",
-            [app.id.to_string().into(), audience.clone().into()],
+            [app.id.into(), audience.clone().into()],
         )).await?;
-        if allowed.is_none() { return Err(GrantError::InvalidGrant); }
+        if allowed.is_none() {
+            return Err(GrantError::InvalidGrant);
+        }
     }
 
+    if let (Some(audience), Some(scope)) = (&record.audience, &record.resource_scope) {
+        for permission in scope.split_whitespace() {
+            let valid = tx.query_one_raw(Statement::from_sql_and_values(DbBackend::Sqlite,
+                "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
+                [app.id.into(),audience.clone().into(),permission.to_owned().into()]
+            )).await?;
+            if valid.is_none() {
+                return Err(GrantError::InvalidGrant);
+            }
+        }
+    }
     // Consent may be revoked between authorization and code redemption.
     if !consent::approved(&tx, account.id, app.id, &record.scope).await? {
         return Err(GrantError::InvalidGrant);
     }
 
+    if !consent::approved_resource(
+        &tx,
+        account.id,
+        app.id,
+        record.audience.as_deref(),
+        record.resource_scope.as_deref(),
+    )
+    .await?
+    {
+        return Err(GrantError::InvalidGrant);
+    }
     let result = authorization_code::Entity::update_many()
         .col_expr(authorization_code::COLUMN.consumed_at, Expr::value(now))
         .filter(authorization_code::COLUMN.id.eq(record.id))
@@ -209,6 +246,7 @@ pub async fn redeem(
         client_id: app.client_id,
         scope: record.scope,
         resource: record.audience,
+        resource_scope: record.resource_scope,
         nonce: record.nonce,
         auth_time: browser.created_at,
     })
@@ -290,6 +328,7 @@ mod tests {
             redirect_uri: redirect,
             scope: "openid profile".into(),
             resource: None,
+            resource_scope: None,
             state: "unique-state-value-1234".into(),
             nonce: "unique-nonce-value-1234".into(),
             code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM".into(),

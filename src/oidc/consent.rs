@@ -2,8 +2,8 @@
 //! This module only persists or checks an explicit approval. No implicit grants.
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
-    QueryFilter, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseConnection, DbBackend, DbErr,
+    EntityTrait, QueryFilter, Statement, TransactionTrait, sea_query::Expr,
 };
 use uuid::Uuid;
 
@@ -58,7 +58,24 @@ pub async fn approve(
     client_id: Uuid,
     scope: &str,
 ) -> Result<(), DbErr> {
+    approve_request(db, user_id, client_id, scope, None, None).await
+}
+
+/// Both the identity grant and any API resource consent are saved atomically.
+pub async fn approve_request(
+    db: &DatabaseConnection,
+    user_id: Uuid,
+    client_id: Uuid,
+    scope: &str,
+    resource: Option<&str>,
+    resource_scope: Option<&str>,
+) -> Result<(), DbErr> {
     let requested = Scopes::parse(scope).map_err(|e| DbErr::Custom(e.into()))?;
+    if resource.is_some() != resource_scope.is_some() {
+        return Err(DbErr::Custom(
+            "Resource and permissions must occur together".into(),
+        ));
+    }
     let now = Utc::now();
     let tx = db.begin().await?;
     let account = user::Entity::find_by_id(user_id).one(&tx).await?;
@@ -67,14 +84,54 @@ pub async fn approve(
         return Err(DbErr::Custom("Account or client not authorized".into()));
     }
 
-    // Never accumulate permissions implicitly. The exact scopes confirmed
-    // by the user replace the previous set instead of silently expanding it.
+    if let (Some(audience), Some(permissions)) = (resource, resource_scope) {
+        let requested_permissions: Vec<_> = permissions.split_whitespace().collect();
+        if requested_permissions.is_empty()
+            || requested_permissions.len() > 16
+            || requested_permissions
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != requested_permissions.len()
+        {
+            return Err(DbErr::Custom("Invalid resource permissions".into()));
+        }
+        for permission in &requested_permissions {
+            let allowed = tx.query_one_raw(Statement::from_sql_and_values(
+                DbBackend::Sqlite,
+                "SELECT 1 FROM oauth_client_resource_scopes crs JOIN oauth_resources r ON r.id=crs.resource_id WHERE crs.client_id=? AND r.audience=? AND r.active=1 AND crs.scope=?",
+                [client_id.into(), audience.to_owned().into(), (*permission).to_owned().into()],
+            )).await?;
+            if allowed.is_none() {
+                return Err(DbErr::Custom("Resource permission not allowed".into()));
+            }
+        }
+        // Re-approval replaces (rather than accumulates) resource permissions.
+        tx.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "DELETE FROM oauth_resource_consents WHERE user_id=? AND client_id=? AND resource_id=(SELECT id FROM oauth_resources WHERE audience=?)",
+            [user_id.into(),client_id.into(),audience.to_owned().into()],
+        )).await?;
+        tx.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "UPDATE oidc_access_tokens SET revoked=1 WHERE user_id=? AND client_id=? AND audience=?",
+            [user_id.into(),client_id.into(),audience.to_owned().into()],
+        )).await?;
+        let inserted = tx.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_resource_consents(user_id,client_id,resource_id,scope,approved_at,revoked_at) SELECT ?,?,id,?,?,NULL FROM oauth_resources WHERE audience=? AND active=1",
+            [user_id.into(),client_id.into(),permissions.to_owned().into(),now.to_rfc3339().into(),audience.to_owned().into()],
+        )).await?;
+        if inserted.rows_affected() != 1 {
+            return Err(DbErr::Custom("Unknown resource".into()));
+        }
+    }
+
     oidc_consent::Entity::delete_many()
         .filter(oidc_consent::COLUMN.user_id.eq(user_id))
         .filter(oidc_consent::COLUMN.client_id.eq(client_id))
         .exec(&tx)
         .await?;
-
     oidc_consent::ActiveModel {
         id: Set(Uuid::new_v4()),
         user_id: Set(user_id),
@@ -86,6 +143,34 @@ pub async fn approve(
     .insert(&tx)
     .await?;
     tx.commit().await
+}
+
+/// Check the resource's recorded end-user approval, independently of the
+/// operator's assignment of application permissions.
+pub async fn approved_resource<C: ConnectionTrait>(
+    db: &C,
+    user_id: Uuid,
+    client_id: Uuid,
+    resource: Option<&str>,
+    resource_scope: Option<&str>,
+) -> Result<bool, DbErr> {
+    let (Some(audience), Some(scope)) = (resource, resource_scope) else {
+        return Ok(resource.is_none() && resource_scope.is_none());
+    };
+    let record = db.query_one_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "SELECT rc.scope FROM oauth_resource_consents rc JOIN oauth_resources r ON r.id=rc.resource_id WHERE rc.user_id=? AND rc.client_id=? AND r.audience=? AND r.active=1 AND rc.revoked_at IS NULL",
+        [user_id.into(),client_id.into(),audience.to_owned().into()],
+    )).await?;
+    let Some(record) = record else {
+        return Ok(false);
+    };
+    let saved: String = record.try_get("", "scope")?;
+    let granted: std::collections::HashSet<_> = saved.split_whitespace().collect();
+    Ok(!scope.split_whitespace().collect::<Vec<_>>().is_empty()
+        && scope
+            .split_whitespace()
+            .all(|value| granted.contains(value)))
 }
 
 pub async fn approved<C: ConnectionTrait>(
@@ -217,5 +302,106 @@ mod tests {
         account.email_verified = Set(false);
         account.update(&db).await.unwrap();
         assert!(approve(&db, uid, cid, "openid").await.is_err());
+    }
+    #[tokio::test]
+    async fn explicit_api_consent_requires_an_operator_grant_and_is_resource_specific() {
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        let (db, user_id, client_id) = fixture().await;
+        let resource_id = Uuid::new_v4().to_string();
+        let api = "https://api.example.test";
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
+            [
+                resource_id.clone().into(),
+                api.into(),
+                "Test API".into(),
+                vec![0u8; 32].into(),
+            ],
+        ))
+        .await
+        .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_client_resources(client_id,resource_id) VALUES(?,?)",
+            [client_id.into(), resource_id.clone().into()],
+        ))
+        .await
+        .unwrap();
+        assert!(
+            super::approve_request(
+                &db,
+                user_id,
+                client_id,
+                "openid",
+                Some(api),
+                Some("documents:read")
+            )
+            .await
+            .is_err()
+        );
+
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_resource_scopes(resource_id,scope) VALUES(?,?)",
+            [resource_id.clone().into(), "documents:read".into()],
+        ))
+        .await
+        .unwrap();
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Sqlite,
+            "INSERT INTO oauth_client_resource_scopes(client_id,resource_id,scope) VALUES(?,?,?)",
+            [
+                client_id.into(),
+                resource_id.into(),
+                "documents:read".into(),
+            ],
+        ))
+        .await
+        .unwrap();
+        assert!(
+            super::approve_request(
+                &db,
+                user_id,
+                client_id,
+                "openid",
+                Some(api),
+                Some("documents:read")
+            )
+            .await
+            .is_ok()
+        );
+        assert!(
+            super::approved_resource(&db, user_id, client_id, Some(api), Some("documents:read"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !super::approved_resource(&db, user_id, client_id, Some(api), Some("documents:write"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !super::approved_resource(
+                &db,
+                user_id,
+                client_id,
+                Some("https://other.example.test"),
+                Some("documents:read")
+            )
+            .await
+            .unwrap()
+        );
+        assert!(
+            !super::approved_resource(
+                &db,
+                Uuid::new_v4(),
+                client_id,
+                Some(api),
+                Some("documents:read")
+            )
+            .await
+            .unwrap()
+        );
     }
 }
