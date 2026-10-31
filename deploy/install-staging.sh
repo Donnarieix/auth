@@ -9,36 +9,55 @@ umask 077
 exec 9>/run/lock/donnarieix-auth-deploy.lock
 flock -n 9 || { echo "Another Auth deployment is running" >&2; exit 1; }
 
+
 base=/opt/donnarieix-auth
 state=/var/lib/donnarieix-auth
 db="$state/data/auth.db"
+live="$base/bin/auth"
 tmp="$(mktemp -d /var/tmp/auth-upload.XXXXXXXX)"
 backup=""
 release=""
-previous=""
 switched=0
 stopped=0
+had_previous=0
+
+restore_db() {
+    # Both an existing DB and a previously absent DB can be restored exactly.
+    rm -f -- "$db" "$db-wal" "$db-shm"
+    if [[ -f "$backup/auth.db" ]]; then
+        install -m 0600 -o donnarieix-auth -g donnarieix-auth "$backup/auth.db" "$db"
+    fi
+}
 
 rollback_on_exit() {
     code=$?
     trap - EXIT
-    if (( code != 0 && switched == 0 && stopped == 1 )); then
-        systemctl start donnarieix-auth.service || true
-    fi
-    if (( code != 0 && switched == 1 )); then
-        echo "Auth deployment failed; restoring previous executable and SQLite." >&2
-        systemctl stop donnarieix-auth.service || true
-        if [[ -n "$previous" && -x "$previous/auth" ]]; then
-            ln -sfn "$previous" "$base/current.next"
-            mv -Tf "$base/current.next" "$base/current"
-        else
-            rm -f "$base/current" "$base/current.next"
+    if (( code != 0 )); then
+        echo "Deployment failed; service and recovery details:" >&2
+        systemctl show donnarieix-auth.service \
+          --property=LoadState,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus \
+          --no-pager >&2 || true
+        if [[ -n "$backup" && -d "$backup" ]]; then
+            # Preserve logs locally, never export the journal to CI.
+            journalctl -u donnarieix-auth.service -b -n 100 --no-pager \
+              > "$backup/service-failure-journal.log" 2>&1 || true
+            chmod 0600 "$backup/service-failure-journal.log" || true
+            echo "Detailed journal kept locally: $backup/service-failure-journal.log" >&2
         fi
-        rm -f "$db" "$db-wal" "$db-shm"
-        if [[ -n "$backup" && -f "$backup/auth.db" ]]; then
-            install -m 0600 -o donnarieix-auth -g donnarieix-auth "$backup/auth.db" "$db"
-        fi
-        if [[ -n "$previous" ]]; then
+        if (( switched == 1 )); then
+            echo "Rolling back executable and SQLite to pre-deploy snapshot." >&2
+            systemctl stop donnarieix-auth.service || true
+            if (( had_previous == 1 )); then
+                install -m 0755 -o root -g root "$backup/previous-auth" "$base/bin/.auth-rollback"
+                mv -Tf "$base/bin/.auth-rollback" "$live"
+            else
+                rm -f -- "$live" "$base/bin/.auth-rollback"
+            fi
+            restore_db
+            if (( had_previous == 1 )); then
+                systemctl start donnarieix-auth.service || true
+            fi
+        elif (( stopped == 1 )) && (( had_previous == 1 )); then
             systemctl start donnarieix-auth.service || true
         fi
     fi
@@ -95,19 +114,35 @@ if digest != match.group(1):
     raise SystemExit("Artifact checksum mismatch")
 PY
 
-mkdir -p "$base/releases" /var/backups/donnarieix-auth
+
+# Only root-owned directories and regular executable files are used by systemd.
+# Legacy /opt/donnarieix-auth/current may contain a circular symlink: ignore it.
+mkdir -p "$base/releases" "$base/bin" /var/backups/donnarieix-auth
+[[ ! -L "$base/bin" ]] || { echo "Refusing symlinked binary directory" >&2; exit 1; }
+[[ ! -L "$live" ]] || { echo "Refusing symlinked active executable" >&2; exit 1; }
 release="$(mktemp -d "$base/releases/release-XXXXXXXX")"
 install -m 0755 -o root -g root "$tmp/auth" "$release/auth"
 
-# Do not change the binary or database until all artifact validation passed.
-previous="$(readlink -f "$base/current" || true)"
-systemctl stop donnarieix-auth.service || true
-stopped=1
+# Prefer the new live regular file. If this CT was already deployed with
+# the old symlink, salvage a valid prior executable when possible.
+previous_binary=""
+if [[ -f "$live" && -x "$live" ]]; then
+    previous_binary="$live"
+elif [[ -f "$base/current/auth" && -x "$base/current/auth" ]]; then
+    previous_binary="$base/current/auth"
+fi
+
 backup="$(mktemp -d /var/backups/donnarieix-auth/snapshot-XXXXXXXX)"
 chmod 0700 "$backup"
+if [[ -n "$previous_binary" ]]; then
+    install -m 0755 -o root -g root "$previous_binary" "$backup/previous-auth"
+    had_previous=1
+fi
+
+systemctl stop donnarieix-auth.service || true
+stopped=1
 if [[ -f "$db" ]]; then
-    # SQLite online backup includes committed WAL transactions. Auth is
-    # stopped here so the copy is a stable pre-migration recovery point.
+    # Service is stopped; include committed WAL state in SQLite snapshot.
     python3 - "$db" "$backup/auth.db" <<'PY'
 import sqlite3, sys
 src = sqlite3.connect("file:" + sys.argv[1] + "?mode=ro", uri=True)
@@ -123,30 +158,38 @@ finally:
 PY
     chmod 0600 "$backup/auth.db"
 fi
-# Key backup stays root-only; never publish key files to Actions/artifacts.
 cp -a "$state/keys" "$backup/keys"
 
-ln -sfn "$release" "$base/current.next"
-mv -Tf "$base/current.next" "$base/current"
+# Atomic replacement of a REAL executable. This avoids any symlink traversal
+# in systemd ExecStart, including legacy circular current/current.next links.
+install -m 0755 -o root -g root "$release/auth" "$base/bin/.auth-next"
+mv -Tf "$base/bin/.auth-next" "$live"
 switched=1
 
+systemctl reset-failed donnarieix-auth.service || true
 systemctl start donnarieix-auth.service
 listen="$(sed -n 's/^AUTH_LISTEN_ADDR=//p' /etc/donnarieix-auth/auth.env | tail -n 1)"
 issuer="$(sed -n 's/^AUTH_PUBLIC_ORIGIN=//p' /etc/donnarieix-auth/auth.env | tail -n 1)"
 [[ -n "$listen" && -n "$issuer" ]] || { echo "Missing Auth listen/issuer settings" >&2; exit 1; }
 
 healthy=0
-for attempt in $(seq 1 40); do
+for attempt in $(seq 1 30); do
     if curl -fsS --max-time 2 "http://$listen/health" >/dev/null 2>&1 && \
-       curl -fsS --max-time 2 "http://$listen/.well-known/openid-configuration" | \
+       curl -fsS --max-time 2 "http://$listen/.well-known/openid-configuration" 2>/dev/null | \
        python3 -c 'import json,sys; o=json.load(sys.stdin); assert o["issuer"] == sys.argv[1]' "$issuer" 2>/dev/null; then
         healthy=1
         break
     fi
     sleep 1
 done
-[[ "$healthy" -eq 1 ]] || { echo "Auth readiness check failed" >&2; exit 1; }
+
+if [[ "$healthy" -ne 1 ]]; then
+    health_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://$listen/health" 2>/dev/null || true)"
+    discovery_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://$listen/.well-known/openid-configuration" 2>/dev/null || true)"
+    echo "Auth readiness failed: health HTTP ${health_code:-unreachable}; discovery HTTP ${discovery_code:-unreachable}" >&2
+    exit 1
+fi
 
 switched=0
 release=""
-echo "Donnarieix Auth deployed successfully; previous SQLite snapshot: $backup"
+echo "Auth deployed successfully; recovery snapshot: $backup"

@@ -12,14 +12,14 @@ expected as the project matures.
 - Initial issuer: `https://auth-test.donnarieix.fr`, private/VPN only.
 - SQLite: `/var/lib/donnarieix-auth/data/auth.db`.
 - RSA key: `/var/lib/donnarieix-auth/keys/oidc.private.pem`.
-- Releases: `/opt/donnarieix-auth/releases`; `current` symlink.
+- Releases: `/opt/donnarieix-auth/releases`; active executable is a **regular file** at `/opt/donnarieix-auth/bin/auth` (atomically replaced, no symlink).
 - SQLite/key snapshots: `/var/backups/donnarieix-auth/` (root-only).
 - CI: GitHub-hosted runner -> SSH port already used for infra-static ->
   restricted forwarding to the CT -> forced-command release receiver.
 
 No developer passwords, OIDC keys, SQLite DBs or user data are copied to CI.
 Only reviewed compiled binaries are delivered. The receiver takes a SQLite
-backup **before running any new migration**, swaps the binary, restarts Auth,
+backup **before running any new migration**, atomically replaces the executable without following a symlink, restarts Auth,
 checks HTTP health and OIDC discovery, and on failure restores both the
 previous executable and pre-upgrade SQLite database. Saved private RSA key
 material is kept off the CI runner.
@@ -130,6 +130,35 @@ the hosts and environment secrets above have been configured.
 No need for a direct public address for `192.168.1.142`, separate
 artifact transfer, or a second application deployment key.
 
+## One-time repair after the first failed rollout
+
+If systemd reported `203/EXEC` and `Too many levels of symbolic links` at
+`/opt/donnarieix-auth/current/auth`, this was the legacy symlink-based
+launcher. **Do not delete SQLite, RSA signing keys or protected snapshots.**
+The new launcher and installer use a regular executable at
+`/opt/donnarieix-auth/bin/auth`, independent of the broken `current` link.
+
+On the CT console, as root, once the fix is merged into `main`:
+
+```bash
+systemctl stop donnarieix-auth.service
+systemctl reset-failed donnarieix-auth.service
+cd /root/auth-staging
+git fetch origin main
+git checkout -B main FETCH_HEAD
+bash deploy/bootstrap-lxc.sh
+systemctl daemon-reload
+systemctl cat donnarieix-auth.service | grep ExecStart
+```
+
+No public SSH key is required on this second bootstrap: the restricted
+`auth-deploy` SSH setup persists. The expected ExecStart is
+`/opt/donnarieix-auth/bin/auth`. Leave the service stopped until CI
+delivers a valid artifact; the new unit will no longer spin indefinitely
+when a binary is missing. The root-owned receiver is updated during this
+one-time command. Once repaired, use GitHub Actions to redeploy; all
+further ordinary updates are automatic.
+
 ## Automatic releases
 
 1. Merge the reviewed staging-deployment PR into `main`.
@@ -139,7 +168,7 @@ artifact transfer, or a second application deployment key.
 4. If quality checks and build pass, and `AUTH_AUTO_DEPLOY=true`,
    Actions uses the pinned SSH gateway to call the CT's forced receiver.
 5. The CT receiver validates archive content and SHA-256, stops Auth,
-   backs up SQLite and keys, switches `current`, starts Auth, and tests
+   backs up SQLite and keys, replaces the real executable under `bin/auth`, starts Auth, and tests
    `/health` plus issuer discovery. Failed startup triggers rollback.
 6. The workflow fails if deployment fails; previous releases and
    protected snapshots remain available for investigation.
@@ -177,7 +206,7 @@ systemd-run --wait --pty --collect \
   --property=User=donnarieix-auth \
   --property=WorkingDirectory=/var/lib/donnarieix-auth \
   --property=EnvironmentFile=/etc/donnarieix-auth/auth.env \
-  /opt/donnarieix-auth/current/auth admin bootstrap operator
+  /opt/donnarieix-auth/bin/auth admin bootstrap operator
 ```
 
 Keep the credential in a password manager. Run the same
