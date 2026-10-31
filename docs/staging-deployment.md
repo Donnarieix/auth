@@ -51,9 +51,7 @@ The OIDC key must exist before startup in HTTPS mode.
 
 ## Administrator bootstrap (with service stopped)
 
-```bash
-sudo systemctl stop donnarieix-auth
-
+Stop the service first with `sudo systemctl stop donnarieix-auth`.
 Use systemd-run so the root-only environment file is read by systemd:
 
 ```bash
@@ -100,8 +98,10 @@ always preserve the matching database backup.
 CI's optional SSH deployment requires a restricted forced-command receiver
 and GitHub Environment `staging`. Until the receiver is provisioned, leave
 `AUTH_STAGING_AUTO_DEPLOY` unset and do not run the deploy job.
-The receiver must reject unexpected tar entries, verify checksum, snapshot
-SQLite, switch the binary atomically, restart and health-check before success.
+The receiver rejects unexpected tar entries, verifies checksum, switches the
+binary atomically, restarts and health-checks before success. **It does not
+back up or roll back SQLite.** Stop the service and take a tested, secure SQLite
+backup before invoking CI deployment, especially across schema versions.
 Never configure unrestricted root SSH deployment.
 
 ## Acceptance checks
