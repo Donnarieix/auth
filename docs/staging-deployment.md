@@ -33,7 +33,7 @@ real client apps, decide whether the final hostname will instead be
 Use **PowerShell on your own PC** (not inside the CT):
 
 ```powershell
-ssh-keygen -t ed25519 -N '""' -f "$env:USERPROFILE\.ssh\donnarieix-auth-ci" -C "auth-github-actions"
+ssh-keygen -t ed25519 -f "$env:USERPROFILE\.ssh\donnarieix-auth-ci" -C "auth-github-actions"
 Get-Content "$env:USERPROFILE\.ssh\donnarieix-auth-ci.pub"
 ```
 
