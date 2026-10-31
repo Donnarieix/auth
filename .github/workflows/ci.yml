@@ -1,13 +1,21 @@
-name: Rust CI
+name: Rust CI and staging
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -17,8 +25,79 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Tests
-        run: cargo test --all-targets --all-features
+        run: cargo test --locked --all-targets --all-features
       - name: Lockfile reproducibility
         run: git diff --exit-code -- Cargo.lock
+
+  linux-release:
+    needs: checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build tested commit for Debian 13 x86_64
+        run: cargo build --release --locked
+      - name: Package executable and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          install -m 0755 target/release/auth dist/auth
+          (cd dist && sha256sum auth > SHA256SUMS)
+          tar -czf "$RUNNER_TEMP/auth-linux-amd64.tar.gz" -C dist auth SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auth-linux-amd64
+          path: ${{ runner.temp }}/auth-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy-staging:
+    # Opt-in only. No deployment from pull requests or draft branches.
+    # Optionally enable automatic main deployments by setting repository
+    # variable AUTH_STAGING_AUTO_DEPLOY=true after the first manual rollout.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       vars.AUTH_STAGING_AUTO_DEPLOY == 'true')
+    needs: [checks, linux-release]
+    runs-on: ubuntu-24.04
+    environment: staging
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: auth-linux-amd64
+          path: ${{ runner.temp }}/release
+      - name: Configure pinned SSH host identity
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AUTH_STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.AUTH_STAGING_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_KEY:?Missing staging SSH private key}"
+          : "${KNOWN_HOSTS:?Missing pinned SSH known_hosts line}"
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/staging_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/staging_key ~/.ssh/known_hosts
+      - name: Deploy through restricted SSH command
+        shell: bash
+        env:
+          HOST: ${{ secrets.AUTH_STAGING_HOST }}
+          USER: ${{ secrets.AUTH_STAGING_USER }}
+          PORT: ${{ secrets.AUTH_STAGING_PORT }}
+        run: |
+          set -euo pipefail
+          : "${HOST:?Missing AUTH_STAGING_HOST}"
+          : "${USER:?Missing AUTH_STAGING_USER}"
+          port="${PORT:-22}"
+          # The server-side authorized_keys entry MUST have a forced
+          # command pointing to install-staging.sh. No remote shell is used.
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            -i ~/.ssh/staging_key -p "$port" "$USER@$HOST" \
+            < "$RUNNER_TEMP/release/auth-linux-amd64.tar.gz"
