@@ -303,6 +303,7 @@ mod tests {
             user_id: user.id,
             client_id: "client-1".into(),
             scope: "openid".into(),
+            resource: None,
             nonce: "unique-auth-nonce-1234".into(),
             auth_time: Utc::now(),
         };
@@ -392,6 +393,7 @@ mod tests {
             user_id: user.id,
             client_id: "client-1".into(),
             scope: "openid".into(),
+            resource: None,
             nonce: "unique-auth-nonce-1234".into(),
             auth_time: Utc::now(),
         };
@@ -420,6 +422,7 @@ mod tests {
             user_id: user.id,
             client_id: "client-1".into(),
             scope: "openid".into(),
+            resource: None,
             nonce: "unique-auth-nonce-1234".into(),
             auth_time: Utc::now(),
         };

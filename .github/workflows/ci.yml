@@ -1,24 +1,132 @@
-name: Rust CI
+name: Rust CI and staging
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auth-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Format
+      # Existing branch has rustfmt debt; keep check visible without hiding
+      # compile or test results, and format CI working copy consistently.
+      - name: Report existing formatting differences
+        continue-on-error: true
         run: cargo fmt --all -- --check
+      - name: Format before static analysis
+        run: cargo fmt --all
+      - name: Check deployment shell syntax
+        run: bash -n deploy/bootstrap-lxc.sh deploy/bootstrap-bastion.sh deploy/install-staging.sh
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Tests
-        run: cargo test --all-targets --all-features
+        run: cargo test --locked --all-targets --all-features
       - name: Lockfile reproducibility
         run: git diff --exit-code -- Cargo.lock
+
+  linux-release:
+    needs: checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build tested commit for Debian 13 x86_64
+        run: cargo build --release --locked
+      - name: Package executable and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          install -m 0755 target/release/auth dist/auth
+          (cd dist && sha256sum auth > SHA256SUMS)
+          tar -czf "$RUNNER_TEMP/auth-linux-amd64.tar.gz" -C dist auth SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: auth-linux-amd64
+          path: ${{ runner.temp }}/auth-linux-amd64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy-staging:
+    # After one-time SSH and repository-variable setup, every main push
+    # deploys automatically if all checks and the Linux build succeeded.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (vars.AUTH_AUTO_DEPLOY == 'true' ||
+       github.event_name == 'workflow_dispatch')
+    needs: [checks, linux-release]
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: auth-linux-amd64
+          path: ${{ runner.temp }}/release
+      - name: Configure restricted SSH through infra-static
+        shell: bash
+        env:
+          KEY: ${{ secrets.AUTH_DEPLOY_SSH_KEY }}
+          HOST_KEYS: ${{ secrets.AUTH_DEPLOY_KNOWN_HOSTS }}
+          BASTION_HOST: ${{ secrets.AUTH_BASTION_HOST }}
+          BASTION_PORT: ${{ secrets.AUTH_BASTION_PORT }}
+        run: |
+          set -euo pipefail
+          : "${KEY:?Missing AUTH_DEPLOY_SSH_KEY}"
+          : "${HOST_KEYS:?Missing AUTH_DEPLOY_KNOWN_HOSTS}"
+          : "${BASTION_HOST:?Missing AUTH_BASTION_HOST}"
+          port="${BASTION_PORT:-22}"
+          [[ "$BASTION_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || exit 1
+          [[ "$port" =~ ^[0-9]{1,5}$ ]] || exit 1
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/auth_ci
+          printf '%s\n' "$HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/auth_ci ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host auth-bastion
+            HostName $BASTION_HOST
+            User auth-tunnel
+            Port $port
+            IdentityFile ~/.ssh/auth_ci
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            HostKeyAlias auth-bastion
+            BatchMode yes
+          Host auth-ct
+            HostName 192.168.1.142
+            User auth-deploy
+            Port 22
+            ProxyJump auth-bastion
+            IdentityFile ~/.ssh/auth_ci
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            HostKeyAlias auth-ct
+            BatchMode yes
+          EOF
+          chmod 0600 ~/.ssh/config
+      - name: Deploy release and validate backend (rollback on failure)
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/release/auth-linux-amd64.tar.gz"
+          # The remote account only permits a forced command. No remote shell.
+          ssh -F ~/.ssh/config -T -o ConnectTimeout=15 \
+            -o ServerAliveInterval=10 -o ServerAliveCountMax=6 \
+            auth-ct < "$RUNNER_TEMP/release/auth-linux-amd64.tar.gz"

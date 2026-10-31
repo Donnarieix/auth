@@ -4,6 +4,7 @@ use axum::{
     middleware as axum_middleware,
     routing::{get, post},
 };
+use std::net::{IpAddr, SocketAddr};
 use tokio::net::TcpListener;
 
 use crate::{
@@ -141,6 +142,58 @@ async fn main() {
     }
 
     let state = AppState::new().await;
-    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
+    let listen_addr = configured_listen_addr().expect("Invalid AUTH_LISTEN_ADDR");
+    let listener = TcpListener::bind(listen_addr)
+        .await
+        .expect("Cannot bind Donnarieix Auth to AUTH_LISTEN_ADDR");
     axum::serve(listener, router(state)).await.unwrap();
+}
+
+
+/// Explicitly allow only loopback and private network bindings. TLS must be
+/// terminated by a trusted proxy, with firewall rules restricting the port.
+fn parse_listen_addr(raw: &str) -> Result<SocketAddr, &'static str> {
+    let addr: SocketAddr = raw
+        .parse()
+        .map_err(|_| "AUTH_LISTEN_ADDR must be an IP address and port")?;
+    if addr.port() == 0 {
+        return Err("AUTH_LISTEN_ADDR must not use ephemeral port 0");
+    }
+    let trusted = match addr.ip() {
+        IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
+        IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local(),
+    };
+    if !trusted {
+        return Err("AUTH_LISTEN_ADDR must be a loopback or private IP address");
+    }
+    Ok(addr)
+}
+
+fn configured_listen_addr() -> Result<SocketAddr, &'static str> {
+    let raw = match std::env::var("AUTH_LISTEN_ADDR") {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => "127.0.0.1:3000".to_owned(),
+        Err(_) => return Err("AUTH_LISTEN_ADDR is not valid UTF-8"),
+    };
+    parse_listen_addr(&raw)
+}
+
+#[cfg(test)]
+mod listener_config_tests {
+    use super::parse_listen_addr;
+
+    #[test]
+    fn defaults_are_private_and_explicit() {
+        assert_eq!(
+            parse_listen_addr("127.0.0.1:3000").unwrap().to_string(),
+            "127.0.0.1:3000"
+        );
+        assert_eq!(
+            parse_listen_addr("192.168.1.142:3000").unwrap().to_string(),
+            "192.168.1.142:3000"
+        );
+        for bad in ["0.0.0.0:3000", "[::]:3000", "8.8.8.8:3000", "192.168.1.142:0", "auth-test:3000"] {
+            assert!(parse_listen_addr(bad).is_err(), "accepted {bad}");
+        }
+    }
 }
