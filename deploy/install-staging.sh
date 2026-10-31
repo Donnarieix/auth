@@ -22,6 +22,21 @@ stopped=0
 rollback_on_exit() {
     code=$?
     trap - EXIT
+    if (( code != 0 )); then
+        echo "Deployment diagnostics (no application secrets exported):" >&2
+        systemctl show donnarieix-auth.service \
+          --property=LoadState,ActiveState,SubState,Result,ExecMainCode,ExecMainStatus \
+          --no-pager >&2 || true
+        if [[ -n "$backup" && -d "$backup" ]]; then
+            # Journals can contain sensitive records. Keep logs only on the CT.
+            journalctl -u donnarieix-auth.service -b -n 100 --no-pager \
+              > "$backup/service-failure-journal.log" 2>&1 || true
+            chmod 0600 "$backup/service-failure-journal.log" || true
+            echo "Service journal saved privately at: $backup/service-failure-journal.log" >&2
+        else
+            echo "Inspect locally: journalctl -u donnarieix-auth.service -b -n 100 --no-pager" >&2
+        fi
+    fi
     if (( code != 0 && switched == 0 && stopped == 1 )); then
         systemctl start donnarieix-auth.service || true
     fi
@@ -145,7 +160,12 @@ for attempt in $(seq 1 40); do
     fi
     sleep 1
 done
-[[ "$healthy" -eq 1 ]] || { echo "Auth readiness check failed" >&2; exit 1; }
+if [[ "$healthy" -ne 1 ]]; then
+    health_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://$listen/health" 2>/dev/null || true)"
+    discovery_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://$listen/.well-known/openid-configuration" 2>/dev/null || true)"
+    echo "Auth readiness check failed: health HTTP ${health_code:-unreachable}, discovery HTTP ${discovery_code:-unreachable}" >&2
+    exit 1
+fi
 
 switched=0
 release=""
