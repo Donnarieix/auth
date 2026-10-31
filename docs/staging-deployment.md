@@ -1,75 +1,174 @@
-# Donnarieix Auth — test CT (Debian 13, Proxmox)
+# Donnarieix Auth — Proxmox LXC, GitHub Actions auto-deploy
 
-**Staging only, synthetic accounts. Not production approved.**
+This **one CT is the intended long-term hosting target**, initially restricted
+to staging/test accounts. The application is not yet approved for real users.
+Unlike an ephemeral test VM, no recreation or manual binary transfer is
+expected as the project matures.
 
-## Architecture
+## Architecture and persistent paths
 
-- App: unprivileged Debian 13 LXC at `192.168.1.142`.
-- HTTPS edge: existing Nginx on `infra-static`; do not install Nginx in the CT.
-- Proposed test hostname/issuer: `https://auth-test.donnarieix.fr`.
-- Nginx reverse-proxies to `http://192.168.1.142:3000`.
-- Auth binds explicitly to `AUTH_LISTEN_ADDR=192.168.1.142:3000` and refuses wildcard binds.
-- Proxmox firewall MUST restrict TCP 3000 to **infra-static's LAN IP only**.
-  The CT's address is not a public listener, but the whole LAN must not
-  be assumed trusted. Deny other inbound traffic except administration.
+- CT: unprivileged Debian 13, `192.168.1.142`, runs only Auth and systemd.
+- TLS: existing `infra-static` Nginx reverse-proxies to `192.168.1.142:3000`.
+- Initial issuer: `https://auth-test.donnarieix.fr`, private/VPN only.
 - SQLite: `/var/lib/donnarieix-auth/data/auth.db`.
-- OIDC RSA signing key: `/var/lib/donnarieix-auth/keys/oidc.private.pem`.
-- Application releases: `/opt/donnarieix-auth/releases/` with a `current` symlink.
+- RSA key: `/var/lib/donnarieix-auth/keys/oidc.private.pem`.
+- Releases: `/opt/donnarieix-auth/releases`; `current` symlink.
+- SQLite/key snapshots: `/var/backups/donnarieix-auth/` (root-only).
+- CI: GitHub-hosted runner -> SSH port already used for infra-static ->
+  restricted forwarding to the CT -> forced-command release receiver.
 
-The CT should have a DHCP reservation, so `192.168.1.142` stays constant.
+No developer passwords, OIDC keys, SQLite DBs or user data are copied to CI.
+Only reviewed compiled binaries are delivered. The receiver takes a SQLite
+backup **before running any new migration**, swaps the binary, restarts Auth,
+checks HTTP health and OIDC discovery, and on failure restores both the
+previous executable and pre-upgrade SQLite database. Saved private RSA key
+material is kept off the CI runner.
 
-## 1. Bootstrap inside the CT
+The initial issuer is part of OIDC's security identity. Before registering
+real client apps, decide whether the final hostname will instead be
+`auth.donnarieix.fr`; changing it later requires reconfiguration of clients.
 
-Run these in the CT's Proxmox Console as root:
+## One-time setup — deployment SSH key
+
+Use **PowerShell on your own PC** (not inside the CT):
+
+```powershell
+ssh-keygen -t ed25519 -N '""' -f "$env:USERPROFILE\.ssh\donnarieix-auth-ci" -C "auth-github-actions"
+Get-Content "$env:USERPROFILE\.ssh\donnarieix-auth-ci.pub"
+```
+
+If PowerShell treats `-N '""'` unexpectedly, run `ssh-keygen` without
+`-N` and press Enter twice at the passphrase prompts. This is a
+deploy-only key. Protect its **private** half; put it only in the GitHub
+Actions environment secret, never commit or paste it into chat.
+
+Copy the entire `ssh-ed25519 AAAA... auth-github-actions` **public** line.
+Both machines below will receive that same public key with distinct
+forced-command/forward-only restrictions.
+
+## One-time setup — Auth CT
+
+You have already run the initial bootstrap. Run it **once again** with the
+CI public key so it installs the SSH receiver; this does not regenerate
+an existing RSA signing key or overwrite `auth.env`.
+
+Inside Proxmox -> CT `192.168.1.142` -> Console, as root:
 
 ```bash
-apt-get update
-apt-get install -y git
-git clone --single-branch --branch infra/staging-deployment \
-  https://github.com/Donnarieix/auth.git /root/auth-staging
 cd /root/auth-staging
-bash deploy/bootstrap-lxc.sh
+git pull --ff-only
+bash deploy/bootstrap-lxc.sh 'ssh-ed25519 AAAA... auth-github-actions'
 ```
 
-This creates a dedicated system user, private SQLite/key directories,
-a fresh RSA key and a systemd unit. It does **not** install Nginx or
-start Auth, and it never overwrites an existing private key or env file.
-Review `/etc/donnarieix-auth/auth.env`, particularly the private IP and
-issuer. Keep that file root-owned and mode 0600; never send it to CI or chat.
+Replace the quoted example with your real **public** line. This provisions:
 
-## 2. Get the verified binary
+- `auth-deploy`, an account with no usable password.
+- `/usr/local/sbin/auth-receive` as root-owned installer.
+- `authorized_keys` forced command, no TTY, no agent or forwarding.
+- `sudoers` allowing that account **only the root-owned receiver**.
+- systemd unit and persistent data/key directories.
+- SSH daemon if missing.
 
-Once GitHub CI is green, open the latest successful run for PR #55, download
-the **auth-linux-amd64** artifact and extract the outer ZIP on your PC.
-The result is `auth-linux-amd64.tar.gz`. Transfer this archive to the
-CT using SSH/SCP (with a non-root SSH user) or an operator-controlled
-Proxmox host `pct push`. Avoid cloning signing keys or databases.
+The Auth service is **enabled but not started** until CI delivers its
+first binary. The CT requires an incoming SSH connection from
+`infra-static` to TCP/22, and TCP/3000 should only be reachable from
+`infra-static`. Configure both at the Proxmox/LXC firewall.
+Reserve `192.168.1.142` in DHCP.
 
-For a **first installation** after transferring the archive to
-`/root/auth-linux-amd64.tar.gz`, run inside the CT:
+## One-time setup — SSH jump through infra-static
+
+From `infra-static`, with normal administrator privileges:
 
 ```bash
-install -d -m 0755 /opt/donnarieix-auth/releases/initial
-tar -tzf /root/auth-linux-amd64.tar.gz
-tar -xzf /root/auth-linux-amd64.tar.gz \
-  -C /opt/donnarieix-auth/releases/initial
-(cd /opt/donnarieix-auth/releases/initial && sha256sum -c SHA256SUMS)
-chown -R root:root /opt/donnarieix-auth/releases/initial
-chmod 0755 /opt/donnarieix-auth/releases/initial/auth
-ln -sfn /opt/donnarieix-auth/releases/initial /opt/donnarieix-auth/current
-systemctl enable --now donnarieix-auth.service
-curl -fsS http://192.168.1.142:3000/health
+git clone --depth 1 --single-branch --branch infra/staging-deployment \
+  https://github.com/Donnarieix/auth.git /tmp/auth-ci-setup
+sudo bash /tmp/auth-ci-setup/deploy/bootstrap-bastion.sh \
+  'ssh-ed25519 AAAA... auth-github-actions'
 ```
 
-Only use artifacts created by your own reviewed CI run. The
-checksum verifies transfer integrity, not independent publisher
-authenticity. Never run an archive with unexpected entries; the full
-automated SSH installer performs stricter archive validation.
+This creates a dedicated `auth-tunnel` account. It may **only** forward
+connections to `192.168.1.142:22`; it cannot run a remote shell.
+Existing SSH deployment accounts for SEPPYL, Nginx, and Drive are unchanged.
 
-## 3. Initial administrator
+GitHub-hosted runners must already be able to reach the same public SSH
+address/port used for SEPPYL deployment. This reuses the **network path**,
+not SEPPYL's private deployment key or its forced-command SSH account.
+If no externally reachable SSH ingress exists, an isolated self-hosted
+deploy runner or VPN peer will be required instead.
 
-With the service stopped, run the management command under the service
-identity with the root-only env loaded by systemd:
+## One-time setup — pin host keys and GitHub secrets
+
+Read the **server-generated public host keys locally**, not from
+`ssh-keyscan` over an untrusted external path. On `infra-static`:
+
+```bash
+awk '{print "auth-bastion " $1 " " $2}' /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+On the CT:
+
+```bash
+awk '{print "auth-ct " $1 " " $2}' /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+In GitHub -> `Donnarieix/auth` -> Settings -> Environments, create
+`staging`, allow deployments from `main`, and add these **environment
+secrets** (do not enable manual approval if the goal is unattended deploy):
+
+| Secret | Value |
+| --- | --- |
+| `AUTH_DEPLOY_SSH_KEY` | Entire contents of the *private* deploy key, copied directly from your PC |
+| `AUTH_DEPLOY_KNOWN_HOSTS` | The two public host-key lines, `auth-bastion ...` and `auth-ct ...` |
+| `AUTH_BASTION_HOST` | Public hostname/IP used by the existing SEPPYL GitHub Actions SSH deployment |
+| `AUTH_BASTION_PORT` | Existing external SSH port (or `22`) |
+
+Also go to Settings -> Secrets and variables -> Actions -> **Variables**,
+and add the repository variable `AUTH_AUTO_DEPLOY=true` **only after**
+the hosts and environment secrets above have been configured.
+
+No need for a direct public address for `192.168.1.142`, separate
+artifact transfer, or a second application deployment key.
+
+## Automatic releases
+
+1. Merge the reviewed staging-deployment PR into `main`.
+2. Each later push to `main` runs `cargo fmt` diagnostic,
+   Clippy, tests and locked release compilation with Rust cache.
+3. The binary is packaged in the downloadable `auth-linux-amd64` artifact.
+4. If quality checks and build pass, and `AUTH_AUTO_DEPLOY=true`,
+   Actions uses the pinned SSH gateway to call the CT's forced receiver.
+5. The CT receiver validates archive content and SHA-256, stops Auth,
+   backs up SQLite and keys, switches `current`, starts Auth, and tests
+   `/health` plus issuer discovery. Failed startup triggers rollback.
+6. The workflow fails if deployment fails; previous releases and
+   protected snapshots remain available for investigation.
+
+No manual build, SCP, download or systemctl restart for ordinary pushes.
+Changes to the **root-owned receiver itself** require a reviewed one-time
+re-install via the bootstrap script (intentional privilege boundary).
+
+The deployment deliberately does **not** run on PRs or unreviewed branches.
+`workflow_dispatch` on `main` can retry a rollout explicitly. The
+service must remain behind trusted HTTPS for browser use.
+
+## HTTPS on infra-static (one-time)
+
+`deploy/nginx-staging.conf` already proxies to
+`192.168.1.142:3000`. Configure a DNS record and an HTTPS certificate
+whose SAN covers `auth-test.donnarieix.fr`. An apex-only
+`donnarieix.fr` certificate does not cover the subdomain.
+Copy the reviewed Nginx site **only once**; test with `nginx -t`
+before reloading. Continue restricting the hostname to LAN/VPN clients
+for testing.
+
+The SSH receiver checks Auth internally even before Nginx is configured;
+the Nginx certificate/DNS process is separate from application releases.
+Certbot DNS-01 renewal must be automated separately before real use.
+
+## Administrator setup and go-live acceptance
+
+The first administrative credential and TOTP **must be bootstrapped
+locally** after the initial CI deployment, not printed into CI logs:
 
 ```bash
 systemctl stop donnarieix-auth
@@ -80,71 +179,12 @@ systemd-run --wait --pty --collect \
   /opt/donnarieix-auth/current/auth admin bootstrap operator
 ```
 
-Save the generated one-time admin credential to a password manager, never
-Git/chat. Enable administrator TOTP using the same command with
-`admin totp enroll operator` instead of `admin bootstrap operator`.
-Then restart:
+Keep the credential in a password manager. Run the same
+`systemd-run` command with `admin totp enroll operator`, then
+`systemctl start donnarieix-auth`.
 
-```bash
-systemctl start donnarieix-auth
-systemctl status donnarieix-auth --no-pager
-```
-
-## 4. HTTPS on infra-static
-
-The DNS name `auth-test.donnarieix.fr` must resolve correctly for your
-clients. A trusted TLS certificate must explicitly include that hostname
-(SAN); an existing certificate for `donnarieix.fr` alone does not cover it.
-A DNS-01 certificate can be obtained while keeping the CT private.
-
-Copy `deploy/nginx-staging.conf` to the Nginx host, adjust the certificate
-paths and source-IP allowlist for your LAN/WireGuard addresses. This file
-targets `192.168.1.142:3000` by default. Do not use the old Caddy template.
-On `infra-static`, run `nginx -t` before enabling/reloading the site.
-Do not enable a virtual host whose certificate files do not yet exist.
-
-From `infra-static`, first verify the backend with:
-
-```bash
-curl -fsS http://192.168.1.142:3000/health
-```
-
-Then, from an allowed client, verify HTTPS and discovery:
-
-```bash
-curl -fsS https://auth-test.donnarieix.fr/health
-curl -fsS https://auth-test.donnarieix.fr/.well-known/openid-configuration
-curl -fsS https://auth-test.donnarieix.fr/.well-known/jwks.json
-```
-
-Do not test user login over raw HTTP: production-origin cookies are Secure.
-
-## 5. Future CI / SSH deployment
-
-The CI builds a release artifact and contains an **opt-in** staging job.
-For automatic delivery, provision a restricted SSH deploy user, a
-root-owned receiver `deploy/install-staging.sh` as a forced SSH command,
-minimal sudoers access to restart Auth, pinned host keys and GitHub staging
-secrets. GitHub-hosted runners must be able to reach the CT; for a private
-CT prefer a self-hosted runner or a dedicated private tunnel rather than
-opening an unrestricted public SSH port.
-
-Before each update, make and verify a SQLite-consistent backup and protect
-OIDC private keys. **Binary rollback does not roll back SQLite schema**.
-Do not auto-deploy any branch containing incomplete migrations.
-
-## 6. Acceptance gates
-
-- CI: Rust release builds, tests and Clippy pass (format differences are
-  currently reported separately and still need cleanup).
-- Port 3000 inaccessible from unauthorized LAN hosts; allowed Nginx path works.
-- TLS issuer URL, discovery, JWKS and Secure cookies agree.
-- Administrator login and TOTP verified.
-- Synthetic verified user completes OIDC PKCE, consent and denial, UserInfo,
-  logout and token revocation via independent client.
-- Wrong redirect, wrong verifier, replayed code and forbidden audience fail.
-- SMTP verified before inviting real accounts.
-- Backups and restoration tested.
-
-Draft security PR #35 and multi-resource permission PR #54 remain unmerged.
-Keep staging private and synthetic until the outstanding security review.
+Before inviting real users: verify browser CSP, HTTPS TLS, SMTP,
+account verification/recovery, multiple client OIDC PKCE flows,
+negative tests, secure cookies, backup restoration and monitoring.
+Not all production security gates are complete; do not merge the
+unfinished draft resource permission PR #54 blindly.
