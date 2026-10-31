@@ -1,120 +1,150 @@
-# Donnarieix Auth — private staging deployment
+# Donnarieix Auth — test CT (Debian 13, Proxmox)
 
-This is for **synthetic test accounts only**; it is not a production authorization.
-The staging branch intentionally does not merge draft PR #54 or PR #35.
-The service uses SQLite in `/var/lib/donnarieix-auth/data/auth.db`.
-It must never share this database with the legacy authentication service.
+**Staging only, synthetic accounts. Not production approved.**
 
-## Topology and prerequisites
+## Architecture
 
-Debian 13 x86_64, Nginx, systemd and OpenSSL. Do not install on the machine
-hosting SEPPYL unless you can dedicate port 3000 (loopback) and a separate
-hostname. Prefer a separate Proxmox VM. The hostname, HTTPS certificate,
-firewall/VPN access and SSH ingress must be configured beforehand.
+- App: unprivileged Debian 13 LXC at `192.168.1.142`.
+- HTTPS edge: existing Nginx on `infra-static`; do not install Nginx in the CT.
+- Proposed test hostname/issuer: `https://auth-test.donnarieix.fr`.
+- Nginx reverse-proxies to `http://192.168.1.142:3000`.
+- Auth binds explicitly to `AUTH_LISTEN_ADDR=192.168.1.142:3000` and refuses wildcard binds.
+- Proxmox firewall MUST restrict TCP 3000 to **infra-static's LAN IP only**.
+  The CT's address is not a public listener, but the whole LAN must not
+  be assumed trusted. Deny other inbound traffic except administration.
+- SQLite: `/var/lib/donnarieix-auth/data/auth.db`.
+- OIDC RSA signing key: `/var/lib/donnarieix-auth/keys/oidc.private.pem`.
+- Application releases: `/opt/donnarieix-auth/releases/` with a `current` symlink.
 
-Staging issuer: `https://auth-test.donnarieix.fr` (example only).
-It must resolve to the actual host, and the TLS certificate must explicitly
-cover it. A certificate for `donnarieix.fr` alone is insufficient.
-No public registration until you have a controlled anti-abuse and SMTP plan.
+The CT should have a DHCP reservation, so `192.168.1.142` stays constant.
 
-## One-time preparation on the test VM (root)
+## 1. Bootstrap inside the CT
+
+Run these in the CT's Proxmox Console as root:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y openssl ca-certificates curl nginx
-sudo useradd --system --home-dir /var/lib/donnarieix-auth \
-  --shell /usr/sbin/nologin donnarieix-auth || true
-sudo install -d -o donnarieix-auth -g donnarieix-auth -m 0700 \
-  /var/lib/donnarieix-auth /var/lib/donnarieix-auth/data \
-  /var/lib/donnarieix-auth/keys
-sudo install -d -o root -g root -m 0700 /etc/donnarieix-auth
-sudo install -m 0600 -o root -g root deploy/staging.env.example \
-  /etc/donnarieix-auth/auth.env
-sudo -u donnarieix-auth openssl genpkey -algorithm RSA \
-  -pkeyopt rsa_keygen_bits:3072 \
-  -out /var/lib/donnarieix-auth/keys/oidc.private.pem
-sudo chmod 0600 /var/lib/donnarieix-auth/keys/oidc.private.pem
-sudo install -m 0644 deploy/donnarieix-auth.service \
-  /etc/systemd/system/donnarieix-auth.service
-sudo systemctl daemon-reload
+apt-get update
+apt-get install -y git
+git clone --single-branch --branch infra/staging-deployment \
+  https://github.com/Donnarieix/auth.git /root/auth-staging
+cd /root/auth-staging
+bash deploy/bootstrap-lxc.sh
 ```
 
-Review and customize `/etc/donnarieix-auth/auth.env` and
-`deploy/nginx-staging.conf`. **Do not enable Nginx staging virtual host**
-until its certificate is valid and VPN/firewall isolation is applied.
-Install verified CI binary in `/opt/donnarieix-auth/releases/initial/auth` and create a `current` symlink pointing to that release. Keep releases separate from SQLite and keys.
-Then run `systemctl enable --now donnarieix-auth`.
+This creates a dedicated system user, private SQLite/key directories,
+a fresh RSA key and a systemd unit. It does **not** install Nginx or
+start Auth, and it never overwrites an existing private key or env file.
+Review `/etc/donnarieix-auth/auth.env`, particularly the private IP and
+issuer. Keep that file root-owned and mode 0600; never send it to CI or chat.
 
-The systemd service uses `WorkingDirectory=/var/lib/donnarieix-auth`;
-that makes the SQLite path `/var/lib/donnarieix-auth/data/auth.db`.
-The OIDC key must exist before startup in HTTPS mode.
+## 2. Get the verified binary
 
-## Administrator bootstrap (with service stopped)
+Once GitHub CI is green, open the latest successful run for PR #55, download
+the **auth-linux-amd64** artifact and extract the outer ZIP on your PC.
+The result is `auth-linux-amd64.tar.gz`. Transfer this archive to the
+CT using SSH/SCP (with a non-root SSH user) or an operator-controlled
+Proxmox host `pct push`. Avoid cloning signing keys or databases.
 
-Stop the service first with `sudo systemctl stop donnarieix-auth`.
-Use systemd-run so the root-only environment file is read by systemd:
+For a **first installation** after transferring the archive to
+`/root/auth-linux-amd64.tar.gz`, run inside the CT:
 
 ```bash
-sudo systemd-run --wait --pty --collect \
+install -d -m 0755 /opt/donnarieix-auth/releases/initial
+tar -tzf /root/auth-linux-amd64.tar.gz
+tar -xzf /root/auth-linux-amd64.tar.gz \
+  -C /opt/donnarieix-auth/releases/initial
+(cd /opt/donnarieix-auth/releases/initial && sha256sum -c SHA256SUMS)
+chown -R root:root /opt/donnarieix-auth/releases/initial
+chmod 0755 /opt/donnarieix-auth/releases/initial/auth
+ln -sfn /opt/donnarieix-auth/releases/initial /opt/donnarieix-auth/current
+systemctl enable --now donnarieix-auth.service
+curl -fsS http://192.168.1.142:3000/health
+```
+
+Only use artifacts created by your own reviewed CI run. The
+checksum verifies transfer integrity, not independent publisher
+authenticity. Never run an archive with unexpected entries; the full
+automated SSH installer performs stricter archive validation.
+
+## 3. Initial administrator
+
+With the service stopped, run the management command under the service
+identity with the root-only env loaded by systemd:
+
+```bash
+systemctl stop donnarieix-auth
+systemd-run --wait --pty --collect \
   --property=User=donnarieix-auth \
   --property=WorkingDirectory=/var/lib/donnarieix-auth \
   --property=EnvironmentFile=/etc/donnarieix-auth/auth.env \
   /opt/donnarieix-auth/current/auth admin bootstrap operator
 ```
 
-Save the one-time credential in a password manager. Enroll TOTP using the
-same systemd-run pattern with `admin totp enroll operator`.
-Restart the service and test `curl -fsS http://127.0.0.1:3000/health`.
-Do not transmit the admin credential, signing key, or SQLite database via chat.
+Save the generated one-time admin credential to a password manager, never
+Git/chat. Enable administrator TOTP using the same command with
+`admin totp enroll operator` instead of `admin bootstrap operator`.
+Then restart:
 
-## Restricted automatic delivery
+```bash
+systemctl start donnarieix-auth
+systemctl status donnarieix-auth --no-pager
+```
 
-The receiver `deploy/install-staging.sh` should be copied to
-`/usr/local/sbin/auth-staging-receive` as root-owned, executable.
-Provision a dedicated SSH deployment user with a forced command and
-`no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding`.
-Give this user write access only to `/opt/donnarieix-auth/releases`
-and the `current` symlink, and passwordless sudo permission **only**
-for `systemctl restart donnarieix-auth.service`. Do not grant root shell.
-The receiving host needs Python 3 and curl.
+## 4. HTTPS on infra-static
 
-Configure GitHub Environment `staging` secrets:
-`AUTH_STAGING_SSH_KEY`, `AUTH_STAGING_KNOWN_HOSTS`,
-`AUTH_STAGING_HOST`, `AUTH_STAGING_PORT` and
-`AUTH_STAGING_USER`. Verify the SSH host fingerprint out of band.
-GitHub runners need a private network route to the VM; do not expose
-SSH to the internet just to make this deployment function.
+The DNS name `auth-test.donnarieix.fr` must resolve correctly for your
+clients. A trusted TLS certificate must explicitly include that hostname
+(SAN); an existing certificate for `donnarieix.fr` alone does not cover it.
+A DNS-01 certificate can be obtained while keeping the CT private.
 
-## Release and updates
+Copy `deploy/nginx-staging.conf` to the Nginx host, adjust the certificate
+paths and source-IP allowlist for your LAN/WireGuard addresses. This file
+targets `192.168.1.142:3000` by default. Do not use the old Caddy template.
+On `infra-static`, run `nginx -t` before enabling/reloading the site.
+Do not enable a virtual host whose certificate files do not yet exist.
 
-CI (`.github/workflows/ci.yml`) runs formatting, Clippy, tests, builds a
-Debian-compatible Linux artifact and publishes `auth-linux-amd64`.
-Use a pinned SHA256 checksum and install the binary with an atomic rename,
-then restart the service and check `/health`. Before any update, take an
-SQLite-consistent backup (e.g. SQLite `.backup`) together with a protected
-backup of key material. A binary rollback may not roll back a schema migration;
-always preserve the matching database backup.
+From `infra-static`, first verify the backend with:
 
-CI's optional SSH deployment requires a restricted forced-command receiver
-and GitHub Environment `staging`. Until the receiver is provisioned, leave
-`AUTH_STAGING_AUTO_DEPLOY` unset and do not run the deploy job.
-The receiver rejects unexpected tar entries, verifies checksum, switches the
-binary atomically, restarts and health-checks before success. **It does not
-back up or roll back SQLite.** Stop the service and take a tested, secure SQLite
-backup before invoking CI deployment, especially across schema versions.
-Never configure unrestricted root SSH deployment.
+```bash
+curl -fsS http://192.168.1.142:3000/health
+```
 
-## Acceptance checks
+Then, from an allowed client, verify HTTPS and discovery:
 
-1. `/health` succeeds locally; port 3000 is not accessible externally.
-2. The TLS chain and `AUTH_PUBLIC_ORIGIN` exactly match the hostname.
-3. `/.well-known/openid-configuration` issuer and JWKS match.
-4. Administrator browser login and TOTP work over HTTPS.
-5. A synthetic verified user completes PKCE authorization/consent,
-   code exchange, UserInfo, logout, and denied consent with a real test client.
-6. Incorrect redirect_uri, reused code, wrong verifier and wrong audience fail.
-7. Verify SMTP and email verification separately before real invitations.
-8. Test a backup restore on a disposable VM.
+```bash
+curl -fsS https://auth-test.donnarieix.fr/health
+curl -fsS https://auth-test.donnarieix.fr/.well-known/openid-configuration
+curl -fsS https://auth-test.donnarieix.fr/.well-known/jwks.json
+```
 
-Keep this service private until outstanding CSP and security-gate reviews
-are complete. Do not silently merge the unfinished permissions PR #54.
+Do not test user login over raw HTTP: production-origin cookies are Secure.
+
+## 5. Future CI / SSH deployment
+
+The CI builds a release artifact and contains an **opt-in** staging job.
+For automatic delivery, provision a restricted SSH deploy user, a
+root-owned receiver `deploy/install-staging.sh` as a forced SSH command,
+minimal sudoers access to restart Auth, pinned host keys and GitHub staging
+secrets. GitHub-hosted runners must be able to reach the CT; for a private
+CT prefer a self-hosted runner or a dedicated private tunnel rather than
+opening an unrestricted public SSH port.
+
+Before each update, make and verify a SQLite-consistent backup and protect
+OIDC private keys. **Binary rollback does not roll back SQLite schema**.
+Do not auto-deploy any branch containing incomplete migrations.
+
+## 6. Acceptance gates
+
+- CI: Rust release builds, tests and Clippy pass (format differences are
+  currently reported separately and still need cleanup).
+- Port 3000 inaccessible from unauthorized LAN hosts; allowed Nginx path works.
+- TLS issuer URL, discovery, JWKS and Secure cookies agree.
+- Administrator login and TOTP verified.
+- Synthetic verified user completes OIDC PKCE, consent and denial, UserInfo,
+  logout and token revocation via independent client.
+- Wrong redirect, wrong verifier, replayed code and forbidden audience fail.
+- SMTP verified before inviting real accounts.
+- Backups and restoration tested.
+
+Draft security PR #35 and multi-resource permission PR #54 remain unmerged.
+Keep staging private and synthetic until the outstanding security review.
