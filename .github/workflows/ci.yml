@@ -29,6 +29,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Format before static analysis
         run: cargo fmt --all
+      - name: Check deployment shell syntax
+        run: bash -n deploy/bootstrap-lxc.sh deploy/bootstrap-bastion.sh deploy/install-staging.sh
       - name: Clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Tests
