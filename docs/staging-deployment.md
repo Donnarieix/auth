@@ -42,8 +42,7 @@ sudo systemctl daemon-reload
 Review and customize `/etc/donnarieix-auth/auth.env` and
 `deploy/nginx-staging.conf`. **Do not enable Nginx staging virtual host**
 until its certificate is valid and VPN/firewall isolation is applied.
-Place `auth` (from verified CI artifact) as
-`/usr/local/bin/donnarieix-auth` mode 0755, root-owned.
+Install verified CI binary in `/opt/donnarieix-auth/releases/initial/auth` and create a `current` symlink pointing to that release. Keep releases separate from SQLite and keys.
 Then run `systemctl enable --now donnarieix-auth`.
 
 The systemd service uses `WorkingDirectory=/var/lib/donnarieix-auth`;
@@ -54,26 +53,39 @@ The OIDC key must exist before startup in HTTPS mode.
 
 ```bash
 sudo systemctl stop donnarieix-auth
-sudo -u donnarieix-auth bash -c 'cd /var/lib/donnarieix-auth && \
-  set -a && source /etc/donnarieix-auth/auth.env && set +a && \
-  /usr/local/bin/donnarieix-auth admin bootstrap operator'
-```
 
-The environment file is root-only. The command above therefore cannot read
-it as the service user without a secure privileged wrapper. Instead use:
+Use systemd-run so the root-only environment file is read by systemd:
 
 ```bash
 sudo systemd-run --wait --pty --collect \
   --property=User=donnarieix-auth \
   --property=WorkingDirectory=/var/lib/donnarieix-auth \
   --property=EnvironmentFile=/etc/donnarieix-auth/auth.env \
-  /usr/local/bin/donnarieix-auth admin bootstrap operator
+  /opt/donnarieix-auth/current/auth admin bootstrap operator
 ```
 
 Save the one-time credential in a password manager. Enroll TOTP using the
 same systemd-run pattern with `admin totp enroll operator`.
 Restart the service and test `curl -fsS http://127.0.0.1:3000/health`.
 Do not transmit the admin credential, signing key, or SQLite database via chat.
+
+## Restricted automatic delivery
+
+The receiver `deploy/install-staging.sh` should be copied to
+`/usr/local/sbin/auth-staging-receive` as root-owned, executable.
+Provision a dedicated SSH deployment user with a forced command and
+`no-pty,no-agent-forwarding,no-X11-forwarding,no-port-forwarding`.
+Give this user write access only to `/opt/donnarieix-auth/releases`
+and the `current` symlink, and passwordless sudo permission **only**
+for `systemctl restart donnarieix-auth.service`. Do not grant root shell.
+The receiving host needs Python 3 and curl.
+
+Configure GitHub Environment `staging` secrets:
+`AUTH_STAGING_SSH_KEY`, `AUTH_STAGING_KNOWN_HOSTS`,
+`AUTH_STAGING_HOST`, `AUTH_STAGING_PORT` and
+`AUTH_STAGING_USER`. Verify the SSH host fingerprint out of band.
+GitHub runners need a private network route to the VM; do not expose
+SSH to the internet just to make this deployment function.
 
 ## Release and updates
 
