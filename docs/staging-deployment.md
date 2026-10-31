@@ -56,7 +56,8 @@ Inside Proxmox -> CT `192.168.1.142` -> Console, as root:
 
 ```bash
 cd /root/auth-staging
-git pull --ff-only
+git fetch origin main
+git checkout -B main FETCH_HEAD
 bash deploy/bootstrap-lxc.sh 'ssh-ed25519 AAAA... auth-github-actions'
 ```
 
