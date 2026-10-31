@@ -182,8 +182,8 @@ pub async fn redeem(
     if let Some(audience) = &record.audience {
         let allowed = tx.query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = ? AND r.audience = ? AND r.active = 1",
-            [app.id.to_string().into(), audience.clone().into()],
+            "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = (SELECT id FROM clients WHERE client_id = ?) AND r.audience = ? AND r.active = 1",
+            [app.client_id.clone().into(), audience.clone().into()],
         )).await?;
         if allowed.is_none() { return Err(GrantError::InvalidGrant); }
     }
