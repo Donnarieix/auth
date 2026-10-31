@@ -81,7 +81,7 @@ Reserve `192.168.1.142` in DHCP.
 From `infra-static`, with normal administrator privileges:
 
 ```bash
-git clone --depth 1 --single-branch --branch infra/staging-deployment \
+git clone --depth 1 --single-branch --branch main \
   https://github.com/Donnarieix/auth.git /tmp/auth-ci-setup
 sudo bash /tmp/auth-ci-setup/deploy/bootstrap-bastion.sh \
   'ssh-ed25519 AAAA... auth-github-actions'
