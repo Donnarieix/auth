@@ -86,8 +86,8 @@ pub async fn validate_authorization_request(
         if resource.len() > 256 { return Err(AuthorizationError::InvalidClient); }
         let allowed = db.query_one_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = ? AND r.audience = ? AND r.active = 1",
-            [app.id.to_string().into(), resource.clone().into()],
+            "SELECT 1 FROM oauth_client_resources cr JOIN oauth_resources r ON cr.resource_id = r.id WHERE cr.client_id = (SELECT id FROM clients WHERE client_id = ?) AND r.audience = ? AND r.active = 1",
+            [request.client_id.clone().into(), resource.clone().into()],
         )).await?;
         if allowed.is_none() { return Err(AuthorizationError::InvalidClient); }
     }
@@ -196,11 +196,10 @@ mod tests {
             "INSERT INTO oauth_resources(id,audience,name,secret_hash,active) VALUES(?,?,?,?,1)",
             [resource_id.clone().into(), "https://api.example.test".into(), "Example API".into(), vec![0u8;32].into()],
         )).await.unwrap();
-        let owner = crate::services::client::get_client(&db, &client_id).await.unwrap().unwrap();
         db.execute_raw(Statement::from_sql_and_values(
             DbBackend::Sqlite,
-            "INSERT INTO oauth_client_resources(client_id,resource_id) VALUES(?,?)",
-            [owner.id.to_string().into(), resource_id.into()],
+            "INSERT INTO oauth_client_resources(client_id,resource_id) SELECT id, ? FROM clients WHERE client_id = ?",
+            [resource_id.into(), client_id.clone().into()],
         )).await.unwrap();
         assert_eq!(validate_authorization_request(&db, &request).await, Ok(()));
         request.resource = None;
