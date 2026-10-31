@@ -1,7 +1,10 @@
 [Unit]
-Description=Donnarieix Auth (loopback-only OpenID Connect issuer)
+Description=Donnarieix Auth (private network OpenID Connect issuer)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+ConditionPathIsExecutable=/opt/donnarieix-auth/bin/auth
 
 [Service]
 Type=simple
@@ -10,7 +13,7 @@ Group=donnarieix-auth
 UMask=0077
 WorkingDirectory=/var/lib/donnarieix-auth
 EnvironmentFile=/etc/donnarieix-auth/auth.env
-ExecStart=/opt/donnarieix-auth/current/auth
+ExecStart=/opt/donnarieix-auth/bin/auth
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
