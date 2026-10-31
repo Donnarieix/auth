@@ -7,7 +7,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
 };
 use chrono::Utc;
-use sea_orm::{ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement};
+use sea_orm::{ColumnTrait, ConnectionTrait, DbBackend, EntityTrait, QueryFilter, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
