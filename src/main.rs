@@ -148,7 +148,9 @@ async fn main() {
         .expect("Cannot bind Donnarieix Auth to AUTH_LISTEN_ADDR");
     axum::serve(listener, router(state)).await.unwrap();
 }
-\n\n/// Explicitly allow only loopback and private network bindings. TLS must be
+
+
+/// Explicitly allow only loopback and private network bindings. TLS must be
 /// terminated by a trusted proxy, with firewall rules restricting the port.
 fn parse_listen_addr(raw: &str) -> Result<SocketAddr, &'static str> {
     let addr: SocketAddr = raw
