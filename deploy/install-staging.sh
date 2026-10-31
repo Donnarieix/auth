@@ -17,10 +17,14 @@ backup=""
 release=""
 previous=""
 switched=0
+stopped=0
 
 rollback_on_exit() {
     code=$?
     trap - EXIT
+    if (( code != 0 && switched == 0 && stopped == 1 )); then
+        systemctl start donnarieix-auth.service || true
+    fi
     if (( code != 0 && switched == 1 )); then
         echo "Auth deployment failed; restoring previous executable and SQLite." >&2
         systemctl stop donnarieix-auth.service || true
@@ -48,6 +52,8 @@ trap rollback_on_exit EXIT
 
 # Bound the wire input and reject anything other than exactly two regular
 # files; never use tar -x against untrusted SSH input.
+head -c 157286401 > "$tmp/upload.tar.gz"
+[[ "$(stat -c %s "$tmp/upload.tar.gz")" -le 157286400 ]] || { echo "Archive exceeds upload limit" >&2; exit 1; }
 python3 - "$tmp" <<'PY'
 import hashlib
 import os
@@ -58,16 +64,6 @@ import tarfile
 
 dest = Path(sys.argv[1])
 archive = dest / "upload.tar.gz"
-remaining = 150 * 1024 * 1024
-with archive.open("wb") as output:
-    while True:
-        chunk = sys.stdin.buffer.read(min(1024 * 1024, remaining + 1))
-        if not chunk:
-            break
-        remaining -= len(chunk)
-        if remaining < 0:
-            raise SystemExit("Archive exceeds upload limit")
-        output.write(chunk)
 
 with tarfile.open(archive, "r:gz") as tf:
     members = tf.getmembers()
@@ -106,6 +102,7 @@ install -m 0755 -o root -g root "$tmp/auth" "$release/auth"
 # Do not change the binary or database until all artifact validation passed.
 previous="$(readlink -f "$base/current" || true)"
 systemctl stop donnarieix-auth.service || true
+stopped=1
 backup="$(mktemp -d /var/backups/donnarieix-auth/snapshot-XXXXXXXX)"
 chmod 0700 "$backup"
 if [[ -f "$db" ]]; then
