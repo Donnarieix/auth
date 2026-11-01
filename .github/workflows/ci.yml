@@ -30,7 +30,9 @@ jobs:
       - name: Format before static analysis
         run: cargo fmt --all
       - name: Check deployment shell syntax
-        run: bash -n deploy/bootstrap-lxc.sh deploy/bootstrap-bastion.sh deploy/install-staging.sh
+        run: bash -n deploy/bootstrap-lxc.sh deploy/bootstrap-bastion.sh deploy/install-staging.sh deploy/tests/permissions-test.sh
+      - name: Regression test - Auth executable directory permissions
+        run: bash deploy/tests/permissions-test.sh
       - name: Clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Tests

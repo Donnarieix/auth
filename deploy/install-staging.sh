@@ -117,9 +117,17 @@ PY
 
 # Only root-owned directories and regular executable files are used by systemd.
 # Legacy /opt/donnarieix-auth/current may contain a circular symlink: ignore it.
-mkdir -p "$base/releases" "$base/bin" /var/backups/donnarieix-auth
+# umask 077 is intentional for private backups, but would create a
+# root-only bin/ (0700) if mkdir -p were used. The unprivileged Auth
+# service must be able to traverse this directory to execute bin/auth.
 [[ ! -L "$base/bin" ]] || { echo "Refusing symlinked binary directory" >&2; exit 1; }
 [[ ! -L "$live" ]] || { echo "Refusing symlinked active executable" >&2; exit 1; }
+install -d -m 0755 -o root -g root "$base/releases" "$base/bin"
+install -d -m 0700 -o root -g root /var/backups/donnarieix-auth
+runuser -u donnarieix-auth -- test -x "$base/bin" || {
+    echo "Auth service user cannot traverse $base/bin" >&2
+    exit 1
+}
 release="$(mktemp -d "$base/releases/release-XXXXXXXX")"
 install -m 0755 -o root -g root "$tmp/auth" "$release/auth"
 
@@ -165,6 +173,10 @@ cp -a "$state/keys" "$backup/keys"
 install -m 0755 -o root -g root "$release/auth" "$base/bin/.auth-next"
 mv -Tf "$base/bin/.auth-next" "$live"
 switched=1
+runuser -u donnarieix-auth -- test -x "$live" || {
+    echo "Auth executable is inaccessible to service user" >&2
+    exit 1
+}
 
 systemctl reset-failed donnarieix-auth.service || true
 systemctl start donnarieix-auth.service
