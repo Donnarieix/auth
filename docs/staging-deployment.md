@@ -181,19 +181,94 @@ The deployment deliberately does **not** run on PRs or unreviewed branches.
 `workflow_dispatch` on `main` can retry a rollout explicitly. The
 service must remain behind trusted HTTPS for browser use.
 
-## HTTPS on infra-static (one-time)
+## HTTPS on infra-static (one-time, automated)
 
-`deploy/nginx-staging.conf` already proxies to
-`192.168.1.142:3000`. Configure a DNS record and an HTTPS certificate
-whose SAN covers `auth-test.donnarieix.fr`. An apex-only
-`donnarieix.fr` certificate does not cover the subdomain.
-Copy the reviewed Nginx site **only once**; test with `nginx -t`
-before reloading. Continue restricting the hostname to LAN/VPN clients
-for testing.
+The CT at `192.168.1.142` is already deployed through GitHub Actions.
+**Do not install Nginx inside the CT**: it stays on existing `infra-static`.
+The issuer remains `https://auth-test.donnarieix.fr` until the team deliberately
+chooses a final hostname; changing the issuer later requires client updates.
 
-The SSH receiver checks Auth internally even before Nginx is configured;
-the Nginx certificate/DNS process is separate from application releases.
-Certbot DNS-01 renewal must be automated separately before real use.
+### DNS
+
+In the DNS zone that actually serves `donnarieix.fr` (o2switch if your
+authoritative NS are there), configure `auth-test.donnarieix.fr` to resolve
+to **infra-static's HTTPS entry point**, never to the CT private IP.
+A CNAME `auth-test` -> `seppyl.donnarieix.fr` is one option if SEPPYL
+already resolves to that same Nginx server and no other A/AAAA record
+exists for `auth-test`. For an A record, use your existing public reverse
+proxy address, not `192.168.1.142`. Local clients may also need split DNS
+or NAT loopback to reach that name correctly.
+
+### Automated Nginx setup
+
+The reviewed `deploy/install-nginx-edge.sh` generates a dedicated Nginx
+site, preserving SEPPYL and Drive configurations. It first checks the CT's
+`/health` and OIDC issuer discovery, then searches for an existing valid
+certificate whose SAN covers `auth-test.donnarieix.fr` (including
+`*.donnarieix.fr`). It uses such a cert when available. Otherwise,
+it can request a new dedicated certificate with Certbot **HTTP-01 webroot**,
+which remains automatically renewable.
+
+On `infra-static`, once DNS is ready:
+
+```bash
+git clone --depth 1 --branch main \
+  https://github.com/Donnarieix/auth.git /tmp/auth-https-setup
+cd /tmp/auth-https-setup
+sudo bash deploy/install-nginx-edge.sh --email YOUR_WORKING_EMAIL
+```
+
+If the checkout already exists, update it with `git pull --ff-only`.
+Replace the email with one that you control. This address is passed to
+Let's Encrypt for certificate-related notices, not written to GitHub.
+The script does not require the email if an existing valid cert is found.
+
+If a new cert is needed, the public DNS hostname must point to
+`infra-static` and **TCP/80 must be reachable publicly** for ACME
+HTTP-01. The generated HTTP site only serves files under
+`/.well-known/acme-challenge/` and returns 404 for every other path.
+The application itself remains restricted to LAN/VPN on HTTPS. If public
+TCP/80 is unavailable, use a properly automated DNS-01 challenge instead;
+manual DNS-01 certificates **do not renew automatically** without hooks.
+Never open TCP/3000 publicly.
+
+If your WireGuard clients arrive at Nginx from a separate private subnet,
+you can permit that CIDR explicitly:
+
+```bash
+sudo bash deploy/install-nginx-edge.sh --mode existing --vpn-cidr YOUR_WG_CIDR
+```
+
+Do not use a public CIDR or 0.0.0.0/0. The default HTTPS allowlist is
+localhost and `192.168.1.0/24`, with all other sources denied.
+
+The script calls `nginx -t` before reloading, uses a dedicated site name,
+checks real HTTPS using `curl --resolve ...:127.0.0.1`, installs a Certbot
+post-renewal Nginx reload hook, and does **not** restart the Auth CT or
+touch the SQLite DB. A cert reused from earlier manual DNS-01 may still
+require manual renewal: verify `certbot renew --dry-run` and migrate it to
+an automated authenticator before real production use.
+
+### Validation
+
+On `infra-static`:
+
+```bash
+curl -fsS http://192.168.1.142:3000/health
+curl -fsS --resolve auth-test.donnarieix.fr:443:127.0.0.1 \
+  https://auth-test.donnarieix.fr/health
+curl -fsS --resolve auth-test.donnarieix.fr:443:127.0.0.1 \
+  https://auth-test.donnarieix.fr/.well-known/openid-configuration
+sudo nginx -t
+```
+
+From an **allowed LAN/VPN client**, browse
+`https://auth-test.donnarieix.fr`. Test that an unauthorized source gets
+403 and that Nginx/Proxmox firewall deny direct access to CT TCP/3000.
+
+If `certbot certonly --webroot` cannot validate because port 80 is not
+reachable externally, leave the site private and choose automated DNS-01.
+Do not expose the login page over HTTP to work around certificate problems.
 
 ## Administrator setup and go-live acceptance
 
