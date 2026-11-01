@@ -94,7 +94,7 @@ if [[ -z "$certdir" && -z "$email" ]]; then
   exit 1
 fi
 # Never replace a different operator-managed configuration by surprise.
-if [[ -e "$enabled" && "$(readlink -f "$enabled")" != "$site" ]]; then
+if [[ ( -e "$enabled" || -L "$enabled" ) && "$(readlink -f "$enabled")" != "$site" ]]; then
   echo "Refusing to overwrite unrelated enabled Nginx site: $enabled" >&2
   exit 1
 fi
@@ -126,7 +126,7 @@ EOF
 }
 
 enable_site() {
-  if [[ ! -e "$enabled" ]]; then ln -s "$site" "$enabled"; fi
+  if [[ ! -e "$enabled" && ! -L "$enabled" ]]; then ln -s "$site" "$enabled"; fi
   if ! nginx -t; then
     echo "Nginx config validation failed; restoring previous Auth site." >&2
     if [[ -f "$backup_dir/previous.conf" ]]; then
