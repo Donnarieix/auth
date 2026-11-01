@@ -189,10 +189,11 @@ $extra_allow
 
         proxy_pass $backend;
         proxy_http_version 1.1;
-        proxy_set_header Host \$host;
+        proxy_set_header Host \$server_name;
         proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        # Never propagate a client-supplied X-Forwarded-For chain to Auth.
+        proxy_set_header X-Forwarded-For \$remote_addr;
         proxy_connect_timeout 5s;
         proxy_read_timeout 30s;
         proxy_buffering off;
