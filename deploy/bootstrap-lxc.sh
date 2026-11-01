@@ -22,7 +22,10 @@ install -d -m 0700 -o donnarieix-auth -g donnarieix-auth \
   /var/lib/donnarieix-auth/keys
 install -d -m 0700 -o root -g root /etc/donnarieix-auth /var/backups/donnarieix-auth
 install -d -m 0755 -o root -g root \
-  /opt/donnarieix-auth /opt/donnarieix-auth/releases
+  /opt/donnarieix-auth /opt/donnarieix-auth/releases /opt/donnarieix-auth/bin
+# With umask 077, release directories created later must have their
+# executable traversal permission set explicitly for the service user.
+runuser -u donnarieix-auth -- test -x /opt/donnarieix-auth/bin
 if [[ ! -f /etc/donnarieix-auth/auth.env ]]; then
   install -m 0600 -o root -g root "$dir/staging.env.example" /etc/donnarieix-auth/auth.env
 fi
