@@ -1,6 +1,8 @@
 //! RFC 6238 TOTP with HMAC-SHA256 (30-second interval, 6 digits).
 //! Only used for developer administrators; secrets must never be logged.
 use sha2::{Digest, Sha256};
+use hmac::{Hmac, Mac};
+use sha1::Sha1;
 
 const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -55,21 +57,68 @@ pub fn code(secret: &[u8], step: u64) -> u32 {
     truncated % 1_000_000
 }
 
-/// Returns the matched counter, which the database must consume atomically.
-pub fn verify(secret: &[u8], supplied: &str, unix_seconds: i64, last_step: i64) -> Option<i64> {
+// SHA1 is supported for authenticator interoperability. SHA256 remains
+// supported for already-enrolled administrators, with the selected algorithm
+// recorded in the database: never auto-fallback between algorithms.
+pub fn code_sha1(secret: &[u8], step: u64) -> u32 {
+    let mut mac = Hmac::<Sha1>::new_from_slice(secret).expect("HMAC accepts any key length");
+    mac.update(&step.to_be_bytes());
+    let bytes = mac.finalize().into_bytes();
+    let offset = usize::from(bytes[19] & 0x0f);
+    let truncated = (u32::from(bytes[offset] & 0x7f) << 24)
+        | (u32::from(bytes[offset + 1]) << 16)
+        | (u32::from(bytes[offset + 2]) << 8)
+        | u32::from(bytes[offset + 3]);
+    truncated % 1_000_000
+}
+
+/// Returns the matched step; the DB consumes it atomically to prevent replay.
+pub fn verify_algorithm(
+    secret: &[u8],
+    supplied: &str,
+    unix_seconds: i64,
+    last_step: i64,
+    algorithm: &str,
+) -> Option<i64> {
     if secret.len() != 32 || supplied.len() != 6 || !supplied.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
     let supplied: u32 = supplied.parse().ok()?;
+    let calculate: fn(&[u8], u64) -> u32 = match algorithm {
+        "SHA1" => code_sha1,
+        "SHA256" => code,
+        _ => return None,
+    };
     let current = unix_seconds.checked_div(30)?;
     [current - 1, current, current + 1]
         .into_iter()
-        .find(|&step| step >= 0 && step > last_step && code(secret, step as u64) == supplied)
+        .find(|&step| step >= 0 && step > last_step && calculate(secret, step as u64) == supplied)
+}
+
+#[cfg(test)]
+pub fn verify(secret: &[u8], supplied: &str, unix_seconds: i64, last_step: i64) -> Option<i64> {
+    verify_algorithm(secret, supplied, unix_seconds, last_step, "SHA256")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{code, encode_base32, hmac_sha256, verify};
+    use super::{code, code_sha1, encode_base32, hmac_sha256, verify, verify_algorithm};
+
+    #[test]
+    fn sha1_is_interoperable_and_legacy_sha256_does_not_fallback() {
+        let secret = b"12345678901234567890";
+        // RFC 6238 8-digit HOTP-SHA1 vector at 59 seconds is 94287082.
+        assert_eq!(code_sha1(secret, 59 / 30), 287082);
+        let key = b"12345678901234567890123456789012";
+        let now = 1_800_000_000_i64;
+        let step = (now / 30) as u64;
+        let sha1 = format!("{:06}", code_sha1(key, step));
+        assert_eq!(verify_algorithm(key, &sha1, now, -1, "SHA1"), Some(step as i64));
+        assert_eq!(verify_algorithm(key, &sha1, now, step as i64, "SHA1"), None);
+        assert_eq!(verify_algorithm(key, &sha1, now, -1, "INVALID"), None);
+        let sha256 = format!("{:06}", code(key, step));
+        assert_eq!(verify_algorithm(key, &sha256, now, -1, "SHA256"), Some(step as i64));
+    }
 
     #[test]
     fn rfc_vectors_and_non_replay() {
