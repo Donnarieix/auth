@@ -47,7 +47,7 @@ const SCRIPT: &str = r#"(()=>{
 const select=document.querySelector('[data-theme-picker]');
 if(!select)return;
 const saved=localStorage.getItem('auth-theme');
-const selected=['system','light','dark','contrast'].includes(saved)?saved:'system';
+const selected=['system','light','dark','contrast'].includes(saved)?saved:'dark';
 select.value=selected;
 const query=matchMedia('(prefers-color-scheme: dark)');
 const apply=()=>{document.body.dataset.theme=select.value==='system'?(query.matches?'dark':'light'):select.value;};
