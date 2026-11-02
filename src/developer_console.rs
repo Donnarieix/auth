@@ -116,6 +116,44 @@ mod tests {
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
     #[tokio::test]
+    async fn console_csp_permits_first_party_files_and_blocks_inline_scripts() {
+        use axum::{body::to_bytes, http::header};
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        crate::schema::apply(&db).await.unwrap();
+        let app = crate::router(AppState::with_db(db));
+        let page = app.clone().oneshot(Request::builder()
+            .uri("/developer").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(page.status(), StatusCode::OK);
+        let csp = page.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert_eq!(csp, DEVELOPER_CSP);
+        assert!(csp.contains("default-src 'none'"));
+        assert!(csp.contains("script-src 'self'"));
+        assert!(csp.contains("style-src 'self'"));
+        assert!(!csp.contains("script-src 'unsafe-inline'"));
+        let html = to_bytes(page.into_body(), 200_000).await.unwrap();
+        let html = String::from_utf8(html.to_vec()).unwrap();
+        assert!(html.contains("href=\"/assets/developer-console.css\""));
+        assert!(html.contains("src=\"/assets/developer-console.js\""));
+
+        for (path, media_type) in [
+            ("/assets/developer-console.js", "text/javascript; charset=utf-8"),
+            ("/assets/developer-console.css", "text/css; charset=utf-8"),
+            ("/assets/donnarieix-logo.svg", "image/svg+xml; charset=utf-8"),
+        ] {
+            let response = app.clone().oneshot(Request::builder()
+                .uri(path).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            assert_eq!(response.headers()[header::CONTENT_TYPE], media_type, "{path}");
+            assert!(!to_bytes(response.into_body(), 100_000).await.unwrap().is_empty(), "{path}");
+        }
+        // The legacy inline UIs keep their existing CSP, not the new policy.
+        let legacy = app.oneshot(Request::builder()
+            .uri("/account").body(Body::empty()).unwrap()).await.unwrap();
+        assert!(legacy.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str().unwrap().contains("script-src 'unsafe-inline'"));
+    }
+
+    #[tokio::test]
     async fn overview_requires_developer_session() {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
         crate::schema::apply(&db).await.unwrap();
