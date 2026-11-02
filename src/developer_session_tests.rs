@@ -639,8 +639,12 @@ async fn developer_page_distinguishes_http_authentication_and_csrf_errors() {
     let response = call(&app, Method::GET, "/developer", String::new(), &[]).await;
     assert_eq!(response.status(), StatusCode::OK);
     let html = String::from_utf8(to_bytes(response.into_body(), 100_000).await.unwrap().to_vec()).unwrap();
-    assert!(html.contains("r.status===401"));
-    assert!(html.contains("r.status===403"));
-    assert!(html.contains("r.status===429"));
-    assert!(!html.contains("console.log(data.get"));
+    assert!(html.contains("/assets/developer-console.js"));
+    let js_response = call(&app, Method::GET, "/assets/developer-console.js", String::new(), &[]).await;
+    assert_eq!(js_response.status(), StatusCode::OK);
+    let javascript = String::from_utf8(to_bytes(js_response.into_body(), 100_000).await.unwrap().to_vec()).unwrap();
+    assert!(javascript.contains("response.status === 401"));
+    assert!(javascript.contains("response.status === 403"));
+    assert!(javascript.contains("response.status === 429"));
+    assert!(!javascript.contains("console.log(data.get"));
 }

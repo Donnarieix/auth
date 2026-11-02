@@ -65,11 +65,12 @@ jobs:
           retention-days: 14
 
   deploy-staging:
-    # After one-time SSH and repository-variable setup, every main push
-    # deploys automatically if all checks and the Linux build succeeded.
+    # Automatically deploy after merged PRs and direct main pushes.
+    # Set AUTH_AUTO_DEPLOY=false to opt out. Secrets/SSH permissions
+    # must be configured; missing credentials fail the job closed.
     if: >-
       github.ref == 'refs/heads/main' &&
-      (vars.AUTH_AUTO_DEPLOY == 'true' ||
+      (vars.AUTH_AUTO_DEPLOY != 'false' ||
        github.event_name == 'workflow_dispatch')
     needs: [checks, linux-release]
     runs-on: ubuntu-24.04

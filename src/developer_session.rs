@@ -183,6 +183,7 @@ pub async fn logout(
     Ok(jar.remove(cleared))
 }
 
+#[allow(dead_code)] // Retained temporarily for migration/rollback of the legacy screen.
 pub async fn page() -> Html<String> {
     crate::ui::render(
         "Console développeur",
