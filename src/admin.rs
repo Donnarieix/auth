@@ -109,7 +109,7 @@ async fn enroll_totp(
     rand::rng().fill(&mut secret);
     let result = db.execute_raw(Statement::from_sql_and_values(
         DbBackend::Sqlite,
-        "UPDATE developer_administrators SET totp_secret = ?, totp_last_step = -1, totp_required = 1 WHERE username = ? AND active = 1 AND totp_secret IS NULL",
+        "UPDATE developer_administrators SET totp_secret = ?, totp_last_step = -1, totp_required = 1, totp_algorithm = 'SHA1' WHERE username = ? AND active = 1 AND totp_secret IS NULL",
         [secret.to_vec().into(), username.to_owned().into()],
     )).await?;
     if result.rows_affected() != 1 {
@@ -118,7 +118,7 @@ async fn enroll_totp(
     let encoded = admin_totp::encode_base32(&secret);
     println!("TOTP seed (shown once; store offline): {encoded}");
     println!(
-        "Authenticator setup: otpauth://totp/DonnarieixAuth:{username}?secret={encoded}&issuer=DonnarieixAuth&algorithm=SHA256&digits=6&period=30"
+        "Authenticator setup: otpauth://totp/DonnarieixAuth:{username}?secret={encoded}&issuer=DonnarieixAuth&algorithm=SHA1&digits=6&period=30"
     );
     Ok(())
 }

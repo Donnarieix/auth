@@ -186,6 +186,12 @@ const RESOURCE_SCHEMA: &[&str] = &[
     "ALTER TABLE authorization_codes ADD COLUMN audience TEXT",
 ];
 
+const ADMIN_TOTP_ALGORITHM_SCHEMA: &[&str] = &[
+    // Legacy TOTP keys used SHA256. Preserve their algorithm on migration.
+    // Newly enrolled credentials explicitly select SHA1 for compatibility.
+    "ALTER TABLE developer_administrators ADD COLUMN totp_algorithm TEXT NOT NULL DEFAULT 'SHA256' CHECK(totp_algorithm IN ('SHA1', 'SHA256'))",
+];
+
 const ADMIN_TOTP_REQUIRED_SCHEMA: &[&str] = &[
     "ALTER TABLE developer_administrators ADD COLUMN totp_required INTEGER NOT NULL DEFAULT 0 CHECK(totp_required IN (0,1))",
     "UPDATE developer_administrators SET totp_required = 1 WHERE totp_secret IS NOT NULL",
@@ -205,7 +211,7 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     if tx
         .query_one_raw(statement(
-            "SELECT version FROM schema_migrations WHERE version > 14 LIMIT 1",
+            "SELECT version FROM schema_migrations WHERE version > 15 LIMIT 1",
         ))
         .await?
         .is_some()
@@ -444,6 +450,18 @@ pub async fn apply(db: &DatabaseConnection) -> Result<(), DbErr> {
             tx.execute_raw(statement(sql)).await?;
         }
         tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (14)")).await?;
+    }
+
+    let has_v15 = tx
+        .query_one_raw(statement("SELECT version FROM schema_migrations WHERE version = 15"))
+        .await?
+        .is_some();
+    if !has_v15 {
+        for sql in ADMIN_TOTP_ALGORITHM_SCHEMA {
+            tx.execute_raw(statement(sql)).await?;
+        }
+        tx.execute_raw(statement("INSERT INTO schema_migrations (version) VALUES (15)"))
+            .await?;
     }
 
     tx.commit().await
