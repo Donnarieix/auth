@@ -21,6 +21,7 @@ use crate::{
 };
 
 mod account_ui;
+mod legal;
 mod user_avatar;
 mod admin;
 mod admin_totp;
@@ -77,6 +78,11 @@ fn router(state: AppState) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
+        .route("/robots.txt", get(legal::robots))
+        .route("/mentions-legales", get(legal::notices))
+        .route("/confidentialite", get(legal::privacy))
+        .route("/cgu", get(legal::terms))
+        .route("/assets/account-profile.js", get(user_avatar::profile_script))
         .route("/media/avatars/{file}", get(user_avatar::image))
         .route("/account/permissions", get(user_consents::page))
         .route("/account", get(account_ui::page))

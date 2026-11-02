@@ -167,3 +167,8 @@ mod tests {
         assert!(normalize(&valid.into_inner()).is_ok());
     }
 }
+
+/// App-owned static script; no dynamic data or user interpolation.
+pub async fn profile_script() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/javascript; charset=utf-8")], include_str!("assets/account-profile.js"))
+}
