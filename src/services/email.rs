@@ -53,8 +53,27 @@ impl Mailer {
             .expect("MAIL_FROM required when SMTP_HOST set")
             .parse::<Mailbox>()
             .expect("Invalid MAIL_FROM address");
-        let transport = SmtpTransport::relay(&host)
-            .expect("SMTP_HOST must be a TLS-capable relay host")
+        // IMPLICIT TLS (SMTPS, 465) is the documented o2switch mode. Some
+        // transactional mail providers instead require STARTTLS (587).
+        // Both variants reject plaintext/downgrade; there is no insecure mode.
+        let mode = std::env::var("SMTP_TLS_MODE").unwrap_or_else(|_| "implicit".into());
+        let default_port = match mode.as_str() {
+            "implicit" => 465,
+            "starttls" => 587,
+            _ => panic!("SMTP_TLS_MODE must be 'implicit' or 'starttls'"),
+        };
+        let port = std::env::var("SMTP_PORT")
+            .map(|raw| raw.parse::<u16>().expect("SMTP_PORT must be 1..65535"))
+            .unwrap_or(default_port);
+        assert!(port > 0, "SMTP_PORT must not be zero");
+        let builder = if mode == "implicit" {
+            SmtpTransport::relay(&host).expect("SMTP_HOST must be a valid TLS relay host")
+        } else {
+            SmtpTransport::starttls_relay(&host)
+                .expect("SMTP_HOST must be a valid STARTTLS relay host")
+        };
+        let transport = builder
+            .port(port)
             .credentials(Credentials::new(user, pass))
             .timeout(Some(Duration::from_secs(15)))
             .build();
@@ -104,7 +123,11 @@ impl Mailer {
                         .subject(mail.subject)
                         .body(mail.body)
                         .map_err(|_| ())?;
-                    transport.send(&message).map_err(|_| ())?;
+                    // Do not include SMTP error details in logs: a provider
+                    // may echo the recipient or message body (secret code).
+                    transport.send(&message).map_err(|_| {
+                        eprintln!("Auth mail: SMTP submission failed; inspect relay settings, TLS, credentials and connectivity");
+                    })?;
                     Ok(())
                 })
                 .await
