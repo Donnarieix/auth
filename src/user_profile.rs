@@ -33,33 +33,16 @@ impl From<user::Model> for ProfileView {
 #[derive(Deserialize)]
 pub struct UpdateProfile {
     display_name: Option<String>,
-    avatar_url: Option<String>,
 }
 
+// Images are managed by /account/avatar. This endpoint cannot set an arbitrary
+// third-party URL (which would disclose visitor IP addresses to the image host).
 fn checked_profile(mut patch: UpdateProfile) -> Result<UpdateProfile, StatusCode> {
     patch.display_name = patch.display_name.map(|name| name.trim().to_owned());
-    patch.avatar_url = patch.avatar_url.map(|uri| uri.trim().to_owned());
-    if patch
-        .display_name
-        .as_deref()
-        .is_some_and(|v| v.chars().count() > 64 || v.chars().any(char::is_control))
-        || patch
-            .avatar_url
-            .as_deref()
-            .is_some_and(|v| v.len() > 512 || v.chars().any(char::is_control))
-    {
+    if patch.display_name.as_deref().is_some_and(|v| {
+        v.chars().count() > 64 || v.chars().any(char::is_control)
+    }) {
         return Err(StatusCode::BAD_REQUEST);
-    }
-    if let Some(uri) = patch.avatar_url.as_deref().filter(|uri| !uri.is_empty()) {
-        let parsed = url::Url::parse(uri).map_err(|_| StatusCode::BAD_REQUEST)?;
-        if parsed.scheme() != "https"
-            || parsed.username() != ""
-            || parsed.password().is_some()
-            || parsed.host_str().is_none()
-            || parsed.fragment().is_some()
-        {
-            return Err(StatusCode::BAD_REQUEST);
-        }
     }
     Ok(patch)
 }
@@ -83,7 +66,6 @@ pub async fn update(
     let patch = checked_profile(patch)?;
     let mut model: user::ActiveModel = account.into();
     model.display_name = Set(patch.display_name.filter(|s| !s.is_empty()));
-    model.avatar_url = Set(patch.avatar_url.filter(|s| !s.is_empty()));
     model.updated_at = Set(Utc::now());
     let updated = model
         .update(&state.db)
@@ -94,36 +76,11 @@ pub async fn update(
 
 #[cfg(test)]
 mod tests {
-    use super::{UpdateProfile, checked_profile};
+    use super::{checked_profile, UpdateProfile};
     #[test]
-    fn profile_fields_are_bounded_and_https_only() {
-        assert!(
-            checked_profile(UpdateProfile {
-                display_name: Some("  Camille  ".into()),
-                avatar_url: Some("https://example.com/p.png".into())
-            })
-            .is_ok()
-        );
-        assert!(
-            checked_profile(UpdateProfile {
-                display_name: Some("a".repeat(65)),
-                avatar_url: None
-            })
-            .is_err()
-        );
-        assert!(
-            checked_profile(UpdateProfile {
-                display_name: None,
-                avatar_url: Some("javascript:alert(1)".into())
-            })
-            .is_err()
-        );
-        assert!(
-            checked_profile(UpdateProfile {
-                display_name: None,
-                avatar_url: Some("http://localhost/a.png".into())
-            })
-            .is_err()
-        );
+    fn display_name_is_bounded_and_trimmed() {
+        assert_eq!(checked_profile(UpdateProfile { display_name: Some("  Camille  ".into()) }).unwrap().display_name.as_deref(), Some("Camille"));
+        assert!(checked_profile(UpdateProfile { display_name: Some("a".repeat(65)) }).is_err());
+        assert!(checked_profile(UpdateProfile { display_name: Some("bad\\nname".into()) }).is_err());
     }
 }
