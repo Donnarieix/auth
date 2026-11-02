@@ -31,8 +31,10 @@ jobs:
         run: cargo fmt --all
       - name: Check deployment shell syntax
         run: bash -n deploy/bootstrap-lxc.sh deploy/bootstrap-bastion.sh deploy/install-staging.sh deploy/tests/permissions-test.sh deploy/install-nginx-edge.sh deploy/configure-smtp.sh
-      - name: Check developer console JavaScript syntax
-        run: node --check src/assets/developer-console.js
+      - name: Check browser scripts syntax
+        run: |
+          node --check src/assets/developer-console.js
+          node --check src/assets/account-profile.js
       - name: Regression test - Auth executable directory permissions
         run: bash deploy/tests/permissions-test.sh
       - name: Clippy

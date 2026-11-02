@@ -21,6 +21,8 @@ use crate::{
 };
 
 mod account_ui;
+mod legal;
+mod user_avatar;
 mod admin;
 mod admin_totp;
 mod developer;
@@ -65,6 +67,7 @@ fn router(state: AppState) -> Router {
             "/account/profile/data",
             get(user_profile::show).post(user_profile::update),
         )
+        .route("/account/avatar", post(user_avatar::upload).delete(user_avatar::remove).layer(DefaultBodyLimit::max(1024 * 1024)))
         .route("/logout", post(logout))
         .route("/account/consents", get(user_consents::list))
         .route(
@@ -75,6 +78,12 @@ fn router(state: AppState) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
+        .route("/robots.txt", get(legal::robots))
+        .route("/mentions-legales", get(legal::notices))
+        .route("/confidentialite", get(legal::privacy))
+        .route("/cgu", get(legal::terms))
+        .route("/assets/account-profile.js", get(user_avatar::profile_script))
+        .route("/media/avatars/{file}", get(user_avatar::image))
         .route("/account/permissions", get(user_consents::page))
         .route("/account", get(account_ui::page))
         .route("/account/profile", get(profile_page::page))
