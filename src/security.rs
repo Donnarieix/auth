@@ -86,7 +86,9 @@ impl SecurityConfig {
     }
 }
 
-const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: 'self' blob:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+// The first-party workspace stylesheet must load on legacy account and
+// developer forms, whose inline styles are temporarily still supported.
+const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src https: 'self' blob:; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 fn attach_security_headers(response: &mut Response, secure: bool) {
     let headers = response.headers_mut();
@@ -228,7 +230,7 @@ mod tests {
             response.headers()["content-security-policy"]
                 .to_str()
                 .unwrap()
-                .contains("style-src 'unsafe-inline'")
+                .contains("style-src 'self' 'unsafe-inline'")
         );
     }
 
