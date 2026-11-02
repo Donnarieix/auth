@@ -105,7 +105,7 @@ pub async fn authorization_page(
     {
         return error_page(
             StatusCode::BAD_REQUEST,
-            "Invalid or unregistered authorization request.",
+            "Demande de connexion non valide ou application inconnue.",
         );
     }
     let Some(app) = get_client(&state.db, &request.client_id)
@@ -113,41 +113,41 @@ pub async fn authorization_page(
         .ok()
         .flatten()
     else {
-        return error_page(StatusCode::BAD_REQUEST, "Unregistered client.");
+        return error_page(StatusCode::BAD_REQUEST, "Cette application n'est pas enregistrée.");
     };
     if app.client_type != "desktop"
         && (app.client_type != "web" || app.client_secret_hash.is_none())
     {
         return error_page(
             StatusCode::BAD_REQUEST,
-            "Unsupported or unconfigured client.",
+            "Cette application n'est pas correctement configurée.",
         );
     }
     let fields = hidden_request(&request);
     let resource_display = request.resource.as_deref().map(|resource| {
-        format!("<p>Protected API: <code>{}</code></p>", escape(resource))
+        format!("<p class=\"muted\">API concernée : <code>{}</code></p>", escape(resource))
     }).unwrap_or_default();
     let details = format!(
-        "<p>Application: <strong>{}</strong></p><p>Requested permissions: <code>{}</code></p>{resource_display}",
+        "<h2>Autoriser {}</h2><p>Cette application demande les accès suivants : <code>{}</code>.</p>{resource_display}",
         escape(&app.name),
         escape(&request.scope),
     );
     let body = if let Some((account, _)) = browser_session(&state, &jar).await {
         format!(
-            "{details}<p>Signed in as <strong>{}</strong>.</p><form method='post' action='/authorize/approve'>{fields}<button type='submit'>Allow this application</button></form><form method='post' action='/authorize/deny'>{fields}<button type='submit'>Deny</button></form>",
+            "{details}<p class='muted'>Compte utilisé : <strong>{}</strong>.</p><p class='muted'>Vous pouvez retirer cette autorisation depuis votre espace personnel.</p><div class='consent-actions'><form method='post' action='/authorize/approve'>{fields}<button type='submit'>Autoriser et continuer</button></form><form method='post' action='/authorize/deny'>{fields}<button class='secondary' type='submit'>Refuser</button></form></div>",
             escape(&account.username)
         )
     } else {
         // API login is a same-origin JSON endpoint. The browser sends the
         // Origin header and saves its host-only HttpOnly session cookie.
         format!(
-            "{details}<p>Sign in with your verified email to approve access. <a href=\'/account\'>Register or recover an account</a>.</p><form id='login'><label>Email <input name='email' type='email' autocomplete='username' required></label><label>Password <input name='password' type='password' autocomplete='current-password' required></label><button>Sign in</button></form><p id='status' role='alert'></p><script>
+            "{details}<p class='muted'>Connectez-vous pour choisir d'autoriser ou de refuser cette application. <a href=\'/account\'>Créer un compte ou retrouver l'accès</a>.</p><form id='login'><label>Adresse email <input name='email' type='email' autocomplete='username' required></label><label>Mot de passe <input name='password' type='password' autocomplete='current-password' required></label><button>Se connecter</button></form><p id='status' role='alert'></p><script>
 document.getElementById('login').addEventListener('submit', async (event) => {{
  event.preventDefault();
  const form = new FormData(event.target);
  const response = await fetch('/login', {{method:'POST', headers:{{'Content-Type':'application/json'}}, credentials:'same-origin', body: JSON.stringify({{email: form.get('email'), password: form.get('password')}})}});
  if (response.ok) location.reload();
- else document.getElementById('status').textContent = 'Sign-in failed. Check credentials and email verification.';
+ else document.getElementById('status').textContent = 'Connexion refusée. Vérifiez vos identifiants et la confirmation de votre adresse email.';
 }});
 </script>"
         )
@@ -156,7 +156,7 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
         "Autoriser l’accès",
         "/account",
         &format!(
-            "<div class=\"page-heading\"><div class=\"eyebrow\">Accès à une application</div><h1>Continuer en toute confiance.</h1><p class=\"lead\">Vérifiez l'application qui demande l'accès à votre identité avant de continuer.</p></div><section class=\"panel\" style=\"max-width:680px\">{body}</section>"
+            "<div class=\"page-heading\"><div class=\"eyebrow\">Autorisation de connexion</div><h1>Confirmation d'accès</h1><p class=\"lead\">Vérifiez le nom de l'application et les données demandées avant de continuer.</p></div><section class=\"panel\" style=\"max-width:680px\">{body}</section>"
         ),
     );
     // On a native HTML form POST, no-referrer can cause Origin: null.
@@ -171,14 +171,14 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
     // callback. Browsers may apply form-action to the entire redirect chain.
     // Permit only this validated client's origin, not arbitrary destinations.
     let Ok(callback) = Url::parse(&request.redirect_uri) else {
-        return error_page(StatusCode::BAD_REQUEST, "Invalid redirect URI.");
+        return error_page(StatusCode::BAD_REQUEST, "Adresse de retour non valide.");
     };
     let origin = callback.origin().ascii_serialization();
     let policy = format!(
         "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: 'self'; connect-src 'self'; form-action 'self' {origin}; base-uri 'none'; frame-ancestors 'none'"
     );
     let Ok(policy) = axum::http::HeaderValue::from_str(&policy) else {
-        return error_page(StatusCode::BAD_REQUEST, "Invalid redirect origin.");
+        return error_page(StatusCode::BAD_REQUEST, "Origine de retour non valide.");
     };
     (
         [
@@ -211,21 +211,21 @@ pub async fn approve(
         return error_page(StatusCode::BAD_REQUEST, "Invalid authorization request.");
     }
     let Some((account, browser)) = browser_session(&state, &jar).await else {
-        return error_page(StatusCode::UNAUTHORIZED, "A verified session is required.");
+        return error_page(StatusCode::UNAUTHORIZED, "Une session vérifiée est nécessaire.");
     };
     let Some(app) = get_client(&state.db, &request.client_id)
         .await
         .ok()
         .flatten()
     else {
-        return error_page(StatusCode::BAD_REQUEST, "Unregistered client.");
+        return error_page(StatusCode::BAD_REQUEST, "Cette application n'est pas enregistrée.");
     };
     if app.client_type != "desktop"
         && (app.client_type != "web" || app.client_secret_hash.is_none())
     {
         return error_page(
             StatusCode::BAD_REQUEST,
-            "Unsupported or unconfigured client.",
+            "Cette application n'est pas correctement configurée.",
         );
     }
     if crate::oidc::consent::approve(&state.db, account.id, app.id, &request.scope)
@@ -234,17 +234,17 @@ pub async fn approve(
     {
         return error_page(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "Could not record consent.",
+            "Impossible d'enregistrer votre autorisation.",
         );
     }
     match grants::issue(&state.db, &request, account.id, browser.id).await {
         Ok(code) => match redirect_with(&request.redirect_uri, "code", &code, &request.state) {
             Ok(response) => response.into_response(),
-            Err(error) => error_page(error, "Invalid redirect URI."),
+            Err(error) => error_page(error, "Adresse de retour non valide."),
         },
         Err(_) => error_page(
             StatusCode::BAD_REQUEST,
-            "Authorization request expired or invalid.",
+            "La demande de connexion a expiré ou n'est plus valide.",
         ),
     }
 }
@@ -269,6 +269,6 @@ pub async fn deny(
         &request.state,
     ) {
         Ok(response) => response.into_response(),
-        Err(error) => error_page(error, "Invalid redirect URI."),
+        Err(error) => error_page(error, "Adresse de retour non valide."),
     }
 }
