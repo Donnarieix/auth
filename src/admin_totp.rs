@@ -1,7 +1,7 @@
 //! RFC 6238 TOTP with HMAC-SHA256 (30-second interval, 6 digits).
 //! Only used for developer administrators; secrets must never be logged.
 use sha2::{Digest, Sha256};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha1::Sha1;
 
 const ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
