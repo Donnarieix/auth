@@ -24,6 +24,7 @@ mod account_ui;
 mod admin;
 mod admin_totp;
 mod developer;
+mod developer_console;
 mod developer_client_page;
 mod developer_manage;
 mod developer_session;
@@ -93,7 +94,11 @@ fn router(state: AppState) -> Router {
             "/developer/clients/{id}/disable",
             post(developer_manage::disable),
         )
-        .route("/developer", get(developer_session::page))
+        .route("/developer", get(developer_console::page))
+        .route("/developer/overview", get(developer_console::overview))
+        .route("/assets/donnarieix-logo.svg", get(developer_console::logo))
+        .route("/assets/developer-console.css", get(developer_console::styles))
+        .route("/assets/developer-console.js", get(developer_console::script))
         .route("/developer/login", post(developer_session::login))
         .route("/developer/logout", post(developer_session::logout))
         .route("/register", post(register))
