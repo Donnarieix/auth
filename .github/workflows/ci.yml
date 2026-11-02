@@ -2,7 +2,7 @@ name: Rust CI and staging
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/account-ux-avatars-legal]
   pull_request:
   workflow_dispatch:
 
@@ -14,6 +14,32 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  refresh-avatar-lockfile:
+    # One-time maintenance helper for the existing same-repository feature branch.
+    # Never run on main, forks, PR merge refs, or deployment environments.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/account-ux-avatars-legal'
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve new avatar dependencies into the checked-in lockfile
+        run: cargo metadata --format-version 1 > /dev/null
+      - name: Commit lockfile if dependencies changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- Cargo.lock; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add Cargo.lock
+            git commit -m 'build: lock image dependency for avatar processing'
+            git push origin HEAD:refs/heads/feat/account-ux-avatars-legal
+          fi
+
   checks:
     runs-on: ubuntu-24.04
     steps:
