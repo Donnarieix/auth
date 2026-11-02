@@ -148,7 +148,7 @@ mod tests {
         let legacy = app.oneshot(Request::builder()
             .uri("/account").body(Body::empty()).unwrap()).await.unwrap();
         assert!(legacy.headers()[header::CONTENT_SECURITY_POLICY]
-            .to_str().unwrap().contains("script-src 'unsafe-inline'"));
+            .to_str().unwrap().contains("script-src 'self' 'unsafe-inline'"));
     }
 
     #[tokio::test]

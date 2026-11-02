@@ -81,6 +81,6 @@ mod tests {
     fn display_name_is_bounded_and_trimmed() {
         assert_eq!(checked_profile(UpdateProfile { display_name: Some("  Camille  ".into()) }).unwrap().display_name.as_deref(), Some("Camille"));
         assert!(checked_profile(UpdateProfile { display_name: Some("a".repeat(65)) }).is_err());
-        assert!(checked_profile(UpdateProfile { display_name: Some("bad\\nname".into()) }).is_err());
+        assert!(checked_profile(UpdateProfile { display_name: Some("bad\nname".into()) }).is_err());
     }
 }
