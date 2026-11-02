@@ -6,7 +6,7 @@ const LOGO: &str = "/assets/donnarieix-logo.svg";
 
 fn head(title: &str, description: &str, robots: &str, referrer: &str) -> String {
     format!(
-        r#"<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101722"><meta name="referrer" content="{referrer}"><meta name="robots" content="{robots}"><meta name="description" content="{description}"><title>{title} · Donnarieix Auth</title><link rel="icon" href="{LOGO}" type="image/svg+xml"><link rel="stylesheet" href="/assets/workspace.css">"#
+        r##"<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101722"><meta name="referrer" content="{referrer}"><meta name="robots" content="{robots}"><meta name="description" content="{description}"><title>{title} · Donnarieix Auth</title><link rel="icon" href="{LOGO}" type="image/svg+xml"><link rel="stylesheet" href="/assets/workspace.css">"##
     )
 }
 
