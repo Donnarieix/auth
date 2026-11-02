@@ -30,7 +30,7 @@ async fn every_browser_screen_has_the_brand_and_coherent_navigation() {
         assert!(html.contains(expected), "missing page title/content on {url}");
     }
     let profile=html_at(&app,"/account/profile").await;
-    assert!(profile.contains("href=\"/account/profile\" aria-current=\"page\""));
+    assert!(profile.contains("data-route=\"/account/profile\""));
     let dashboard=html_at(&app,"/developer").await;
     assert!(!dashboard.contains("Taux d’erreur"));
     assert!(!dashboard.contains("Tableau de bord"));
@@ -53,4 +53,10 @@ async fn application_setup_has_no_redundant_manual_client_lookup() {
     let account=html_at(&app,"/account").await;
     assert!(!account.contains("data/outbox"));
     assert!(account.contains("Mot de passe oublié"));
+    assert!(!account.contains("href=\"/developer\""), "Account portal must not link to developer sign-in");
+    assert!(account.contains("/assets/workspace.css"));
+    for path in ["/assets/workspace.css", "/assets/workspace.js", "/assets/authorization.js"] {
+        let response=app.clone().oneshot(Request::builder().uri(path).body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "missing asset {path}");
+    }
 }
