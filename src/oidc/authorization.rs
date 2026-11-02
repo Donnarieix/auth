@@ -28,11 +28,46 @@ fn escape(input: &str) -> String {
 }
 
 fn error_page(status: StatusCode, message: &str) -> Response {
-    (status, crate::ui::render(
-        "Demande non valide",
-        "/account",
-        &format!("<div class=\"page-heading\"><div class=\"eyebrow\">Authentification</div><h1>Cette demande ne peut pas aboutir.</h1></div><section class=\"panel\" style=\"max-width:600px\"><p>{}</p><a href=\"/account\">Retour au compte</a></section>", escape(message))
-    )).into_response()
+    let body = format!(
+        r#"<section class="oauth-card oauth-error"><div class="oauth-step">Connexion interrompue</div><h1>Impossible de poursuivre</h1><p>{}</p><a class="button secondary" href="/account">Accéder à mon compte</a></section>"#,
+        escape(message)
+    );
+    (status, crate::ui::render_authorization("Demande non valide", &body)).into_response()
+}
+
+fn permission_items(scope: &str) -> String {
+    scope
+        .split_whitespace()
+        .map(|value| {
+            let (title, description) = match value {
+                "openid" => (
+                    "Confirmer votre identité",
+                    "Permettre à l'application de vous identifier.",
+                ),
+                "profile" => (
+                    "Consulter votre profil",
+                    "Accéder à votre nom affiché et votre photo de profil.",
+                ),
+                "email" => (
+                    "Connaître votre adresse email",
+                    "Accéder à votre adresse email et son état de vérification.",
+                ),
+                _ => (
+                    "Permission supplémentaire",
+                    "Accès spécifique demandé par cette application.",
+                ),
+            };
+            format!(
+                r#"<li class="oauth-scope"><span class="oauth-scope-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7"/><circle cx="12" cy="12" r="9"/></svg></span><div><strong>{title}</strong><span>{description}</span>{}</div></li>"#,
+                if matches!(value, "openid" | "profile" | "email") {
+                    String::new()
+                } else {
+                    format!("<code class=\"mono\">{}</code>", escape(value))
+                }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 async fn browser_session(
@@ -123,59 +158,64 @@ pub async fn authorization_page(
             "Cette application n'est pas correctement configurée.",
         );
     }
-    let fields = hidden_request(&request);
-    let resource_display = request.resource.as_deref().map(|resource| {
-        format!("<p class=\"muted\">API concernée : <code>{}</code></p>", escape(resource))
-    }).unwrap_or_default();
-    let details = format!(
-        "<h2>Autoriser {}</h2><p>Cette application demande les accès suivants : <code>{}</code>.</p>{resource_display}",
-        escape(&app.name),
-        escape(&request.scope),
-    );
-    let body = if let Some((account, _)) = browser_session(&state, &jar).await {
-        format!(
-            "{details}<p class='muted'>Compte utilisé : <strong>{}</strong>.</p><p class='muted'>Vous pouvez retirer cette autorisation depuis votre espace personnel.</p><div class='consent-actions'><form method='post' action='/authorize/approve'>{fields}<button type='submit'>Autoriser et continuer</button></form><form method='post' action='/authorize/deny'>{fields}<button class='secondary' type='submit'>Refuser</button></form></div>",
-            escape(&account.username)
-        )
-    } else {
-        // API login is a same-origin JSON endpoint. The browser sends the
-        // Origin header and saves its host-only HttpOnly session cookie.
-        format!(
-            "{details}<p class='muted'>Connectez-vous pour choisir d'autoriser ou de refuser cette application. <a href=\'/account\'>Créer un compte ou retrouver l'accès</a>.</p><form id='login'><label>Adresse email <input name='email' type='email' autocomplete='username' required></label><label>Mot de passe <input name='password' type='password' autocomplete='current-password' required></label><button>Se connecter</button></form><p id='status' role='alert'></p><script>
-document.getElementById('login').addEventListener('submit', async (event) => {{
- event.preventDefault();
- const form = new FormData(event.target);
- const response = await fetch('/login', {{method:'POST', headers:{{'Content-Type':'application/json'}}, credentials:'same-origin', body: JSON.stringify({{email: form.get('email'), password: form.get('password')}})}});
- if (response.ok) location.reload();
- else document.getElementById('status').textContent = 'Connexion refusée. Vérifiez vos identifiants et la confirmation de votre adresse email.';
-}});
-</script>"
-        )
-    };
-    let page = crate::ui::render(
-        "Autoriser l’accès",
-        "/account",
-        &format!(
-            "<div class=\"page-heading\"><div class=\"eyebrow\">Autorisation de connexion</div><h1>Confirmation d'accès</h1><p class=\"lead\">Vérifiez le nom de l'application et les données demandées avant de continuer.</p></div><section class=\"panel\" style=\"max-width:680px\">{body}</section>"
-        ),
-    );
-    // On a native HTML form POST, no-referrer can cause Origin: null.
-    // Only disclose the origin (never the sensitive authorization URL).
-    // The origin check remains strict on /authorize/approve and /deny.
-    let mut page = page;
-    page.0 = page.0.replace(
-        "name=\"referrer\" content=\"no-referrer\"",
-        "name=\"referrer\" content=\"origin\"",
-    );
-    // A form POST to /authorize/approve responds with a 303 to the registered
-    // callback. Browsers may apply form-action to the entire redirect chain.
-    // Permit only this validated client's origin, not arbitrary destinations.
     let Ok(callback) = Url::parse(&request.redirect_uri) else {
         return error_page(StatusCode::BAD_REQUEST, "Adresse de retour non valide.");
     };
-    let origin = callback.origin().ascii_serialization();
+    let callback_origin = callback.origin().ascii_serialization();
+    let callback_host = callback.host_str().unwrap_or("Application locale");
+    let monogram = app
+        .name
+        .chars()
+        .find(|character| character.is_alphanumeric())
+        .unwrap_or('A')
+        .to_uppercase()
+        .collect::<String>();
+    let app_name = escape(&app.name);
+    let fields = hidden_request(&request);
+    let permissions = permission_items(&request.scope);
+    let resource_details = request
+        .resource
+        .as_ref()
+        .map(|resource| format!(
+            "<details class=\"oauth-resource\"><summary>Informations techniques</summary><p class=\"muted\">Service demandé : <code class=\"mono\">{}</code></p></details>",
+            escape(resource)
+        ))
+        .unwrap_or_default();
+    let identity = if let Some((account, _)) = browser_session(&state, &jar).await {
+        let initial = account
+            .display_name
+            .as_deref()
+            .unwrap_or(&account.username)
+            .chars()
+            .find(|character| character.is_alphanumeric())
+            .unwrap_or('U')
+            .to_uppercase()
+            .collect::<String>();
+        let label = escape(account.display_name.as_deref().unwrap_or(&account.username));
+        format!(
+            r#"<div class="oauth-identity"><span class="oauth-identity-avatar" aria-hidden="true">{initial}</span><div><strong>{label}</strong><small>Compte Donnarieix connecté</small></div></div>
+<h2 class="oauth-permission-title">Cette application souhaite :</h2><ul class="oauth-scopes">{permissions}</ul>{resource_details}
+<div class="oauth-destination">Après confirmation, vous retournerez vers <strong>{}</strong>.</div>
+<div class="oauth-buttons"><form method="post" action="/authorize/approve">{fields}<button type="submit">Autoriser et continuer</button></form><form method="post" action="/authorize/deny">{fields}<button type="submit" class="secondary">Refuser l'accès</button></form></div>
+<p class="oauth-disclaimer">Vous restez maître des accès : vous pourrez retirer cette autorisation depuis votre compte.</p>"#,
+            escape(callback_host)
+        )
+    } else {
+        format!(
+            r#"<div class="oauth-login"><h2 class="oauth-login-heading">Connectez-vous pour continuer</h2><form id="oauth-login" novalidate><label>Adresse email<input name="email" type="email" inputmode="email" autocomplete="username" required placeholder="vous@exemple.fr"></label><label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label><button type="submit" class="oauth-login-submit">Se connecter</button></form><p class="oauth-status" id="oauth-status" role="status" aria-live="polite"></p><p class="oauth-login-options"><a href="/account" target="_blank" rel="noopener noreferrer">Créer un compte ou retrouver l'accès</a> · <span>La demande reste ouverte dans cet onglet.</span></p>
+<details class="oauth-resource"><summary>Voir les autorisations demandées</summary><ul class="oauth-scopes">{permissions}</ul>{resource_details}</details></div>"#
+        )
+    };
+    let body = format!(
+        r#"<section class="oauth-card" aria-labelledby="oauth-title"><div class="oauth-intro"><div class="oauth-step">Connexion à une application</div><div class="oauth-app-mark" aria-hidden="true">{}</div><h1 id="oauth-title"><span class="oauth-app-name">{app_name}</span> souhaite accéder à votre compte</h1><p>Identifiez-vous et choisissez les informations que vous souhaitez partager.</p></div><div class="oauth-body">{identity}</div></section>"#,
+        escape(&monogram)
+    );
+    let page = crate::ui::render_authorization("Connexion à une application", &body);
+    // Native consent form submissions preserve the Origin for our strict CSRF
+    // check, but never disclose query strings or PKCE parameters via Referrer.
+    // Redirects after the form POST are allowed only to this validated client.
     let policy = format!(
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: 'self'; connect-src 'self'; form-action 'self' {origin}; base-uri 'none'; frame-ancestors 'none'"
+        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self' {callback_origin}; base-uri 'none'; frame-ancestors 'none'"
     );
     let Ok(policy) = axum::http::HeaderValue::from_str(&policy) else {
         return error_page(StatusCode::BAD_REQUEST, "Origine de retour non valide.");
@@ -194,7 +234,7 @@ document.getElementById('login').addEventListener('submit', async (event) => {{
         ],
         page,
     )
-        .into_response()
+
 }
 
 /// An approval is never inferred from an existing session or a GET request.

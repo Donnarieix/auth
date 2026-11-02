@@ -70,3 +70,24 @@ pub fn render_authorization(title: &str, body: &str) -> Html<String> {
 </div><script src="/assets/authorization.js" defer></script></body></html>"#
     ))
 }
+
+pub async fn stylesheet() -> impl axum::response::IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")],
+        include_str!("assets/workspace.css"),
+    )
+}
+
+pub async fn script() -> impl axum::response::IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        include_str!("assets/workspace.js"),
+    )
+}
+
+pub async fn authorization_script() -> impl axum::response::IntoResponse {
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
+        include_str!("assets/authorization.js"),
+    )
+}
