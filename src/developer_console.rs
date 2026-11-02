@@ -1,5 +1,5 @@
 //! Authenticated graphite developer dashboard with original Donnarieix brand.
-use axum::{extract::State, http::{header, StatusCode}, response::{Html, IntoResponse}};
+use axum::{extract::State, http::{header, StatusCode}, response::IntoResponse};
 use axum_extra::extract::CookieJar;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::Serialize;
@@ -26,37 +26,23 @@ pub async fn script() -> impl IntoResponse {
 pub async fn page() -> impl IntoResponse {
     (
         [(header::CONTENT_SECURITY_POLICY, DEVELOPER_CSP)],
-        Html(r####"<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#090d13"><title>Applications · Donnarieix Auth</title><link rel="icon" href="/assets/donnarieix-logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/developer-console.css"></head><body>
-<div class="layout">
-<aside class="sidebar">
-<a href="/developer" class="brand"><img class="brand-logo" src="/assets/donnarieix-logo.svg" width="51" height="51" alt=""><span class="brand-text"><span class="brand-name">Donnarieix Auth</span><span class="brand-sub" style="display:block">Console développeur</span></span></a>
-<nav class="side-nav" aria-label="Navigation développeur">
-<a href="/developer" class="side-link selected" aria-current="page"><svg viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5zm-9 5v10l9 5 9-5V7M12 12v10"/></svg>Applications</a>
-<div class="side-divider"></div>
-<a href="/account/profile" class="side-link"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-8 16-8 16 0"/></svg>Mon profil SSO</a>
-<a href="/account/permissions" class="side-link"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z"/></svg>Mes autorisations</a>
-</nav>
-<div class="sidebar-bottom"><div class="environment"><span>◈</span> Espace distinct du compte SSO</div></div>
-</aside>
-<div class="main">
-<header class="topbar"><div><h1 class="page-title">Applications</h1><p class="subtitle">Vos intégrations OpenID Connect au même endroit.</p></div><div class="top-actions"><div class="account" id="account-info" hidden><span id="account-avatar" class="avatar">D</span><span><span id="account-name" class="account-name">Développeur</span><span class="account-role" style="display:block">Administrateur</span></span></div><button type="button" class="action" id="logout-button" hidden>Déconnexion</button></div></header>
-<main class="content">
-<p id="notice" class="message" role="status" aria-live="polite"></p>
-<div id="loading-view" class="loading">Chargement sécurisé…</div>
-<section id="signin-view" class="login-box" hidden aria-label="Connexion administrateur">
-<h2>Connexion développeur</h2><p>Cet accès est indépendant de votre session SSO habituelle.</p>
-<form id="signin-form" class="login-form"><label>Identifiant<input type="text" name="username" autocomplete="username" required minlength="3" maxlength="32"></label><label>Clé administrateur<input type="password" name="token" autocomplete="current-password" required></label><label>Code de vérification TOTP (si activé)<input type="text" name="totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6"></label><button type="submit" id="signin-submit" class="submit">Se connecter</button></form></section>
-<div id="dashboard-view" hidden>
-<div class="content-header"><div><h2>Mes applications</h2><p class="muted" id="app-summary">Chargement…</p></div><a href="/developer/new-client" class="action primary">＋ Nouvelle application</a></div>
-<section class="panel" id="applications" aria-label="Applications enregistrées">
-<div class="app-tools"><input id="app-search" class="search" type="search" placeholder="Rechercher par nom ou identifiant…" aria-label="Rechercher une application"><label class="filter"><input id="active-only" type="checkbox"> Actives uniquement</label></div>
-<div class="table-wrap"><table class="data-table"><thead><tr><th>Application</th><th>Type</th><th>Identifiant client</th><th>Statut</th><th>Actions</th></tr></thead><tbody id="app-rows"></tbody></table></div>
-<p class="metric-hint" style="margin:17px 2px 0">Les URI de retour et les secrets web se configurent dans chaque application.</p>
-</section>
-</div>
-</main>
-</div></div>
-<script src="/assets/developer-console.js" defer></script></body></html>"####)
+        crate::ui::render(
+            "Mes applications",
+            "/developer",
+            r####"<div class="dev-console">
+<div class="dev-heading"><div><div class="eyebrow">OpenID Connect</div><h1>Mes applications</h1><p class="lead">Configurez vos intégrations et gérez les applications autorisées à utiliser Donnarieix Auth.</p></div>
+<div id="account-info" class="dev-account" hidden><span class="dev-user-icon" id="account-avatar">D</span><div><strong id="account-name">Développeur</strong><small>Session administrateur</small></div><button class="secondary" type="button" id="logout-button" hidden>Déconnexion</button></div></div>
+<p id="notice" class="status" role="status" aria-live="polite"></p>
+<section class="panel dev-loading" id="loading-view" aria-live="polite">Chargement des applications…</section>
+<section id="signin-view" class="panel dev-signin" hidden aria-label="Connexion administrateur"><div class="dev-signin-icon" aria-hidden="true">◇</div><h2>Accès développeur</h2><p class="muted">Cet espace technique nécessite une connexion administrateur distincte de votre compte personnel.</p>
+<form id="signin-form"><label>Identifiant administrateur<input type="text" name="username" autocomplete="username" required minlength="3" maxlength="32"></label><label>Clé administrateur<input type="password" name="token" autocomplete="current-password" required></label><label>Code de vérification TOTP<input type="text" name="totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="Si activé"></label><button type="submit" id="signin-submit">Se connecter</button></form></section>
+<div id="dashboard-view" hidden><div class="dev-dashboard-toolbar"><div><h2>Applications enregistrées</h2><p class="muted" id="app-summary">Chargement…</p></div><a href="/developer/new-client" class="button">Nouvelle application</a></div>
+<section class="panel dev-apps" id="applications" aria-label="Applications enregistrées">
+<div class="dev-tools"><label class="dev-search-label">Rechercher<input id="app-search" class="dev-search" type="search" placeholder="Nom ou identifiant d'application…" aria-label="Rechercher une application"></label><label class="dev-active-filter"><input id="active-only" type="checkbox"> Actives uniquement</label></div>
+<div class="dev-table-wrap"><table class="dev-table"><thead><tr><th>Application</th><th>Type</th><th>Identifiant client</th><th>Statut</th><th>Actions</th></tr></thead><tbody id="app-rows"></tbody></table></div>
+<p class="hint dev-helper">Les adresses de retour et les secrets sont gérés dans les paramètres de chaque application.</p>
+</section></div></div><link rel="stylesheet" href="/assets/developer-console.css"><script src="/assets/developer-console.js" defer></script>"####,
+        ),
     )
 }
 

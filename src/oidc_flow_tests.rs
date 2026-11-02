@@ -448,3 +448,38 @@ async fn invalid_clients_and_missing_browser_sessions_never_receive_codes() {
     .await;
     assert_eq!(malformed.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn oauth_consent_isolated_from_account_and_developer_navigation() {
+    let (app, client, cookie) = fixture().await;
+    let url = format!("/authorize?{}", authorization_form(&client));
+    for session in [None, Some(cookie.as_str())] {
+        let headers = session.map(|cookie| vec![("cookie", cookie)]).unwrap_or_default();
+        let response = request(&app, Method::GET, &url, String::new(), &headers).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let headers = response.headers().clone();
+        let csp = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert!(csp.contains("script-src 'self'"), "must permit first-party OAuth JS");
+        assert!(!csp.contains("'unsafe-inline'"), "consent must not run inline scripts");
+        assert_eq!(headers[header::REFERRER_POLICY], "origin");
+        let content = to_bytes(response.into_body(), 100_000).await.unwrap();
+        let html = String::from_utf8(content.to_vec()).unwrap();
+        assert!(html.contains("oauth-shell"));
+        assert!(html.contains("Test Client"));
+        assert!(html.contains("Donnarieix Auth"));
+        assert!(!html.contains("href=\"/developer\""));
+        assert!(!html.contains("Console technique"));
+        assert!(!html.contains("portal-sidebar"));
+        assert!(!html.contains("data-auth-logout"));
+        if session.is_some() {
+            assert!(html.contains("action=\"/authorize/approve\""));
+            assert!(html.contains("action=\"/authorize/deny\""));
+            assert!(html.contains("Consulter votre profil"));
+            assert!(html.contains("Connaître votre adresse email"));
+        } else {
+            assert!(html.contains("id=\"oauth-login\""));
+            assert!(html.contains("src=\"/assets/authorization.js\""));
+            assert!(!html.contains("action=\"/authorize/approve\""));
+        }
+    }
+}
