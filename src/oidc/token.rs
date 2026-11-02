@@ -23,7 +23,10 @@ use crate::{
 #[derive(Deserialize)]
 pub struct TokenRequest {
     pub grant_type: String,
-    pub client_id: String,
+    /// RFC 6749 client_secret_basic clients identify themselves through HTTP
+    /// Basic rather than duplicating client_id in the form body. Public PKCE
+    /// clients still have to supply it in the body.
+    pub client_id: Option<String>,
     pub redirect_uri: String,
     pub code: String,
     pub code_verifier: String,
@@ -59,6 +62,32 @@ fn invalid_request() -> (StatusCode, Json<OAuthError>) {
             error: "invalid_request",
         }),
     )
+}
+
+/// Resolve the OAuth client identity consistently across public PKCE and
+/// RFC 6749 §2.3.1 Basic-authenticated confidential clients. The form ID is
+/// optional when Basic auth is used, but two disagreeing IDs are never accepted.
+/// The client secret is NOT trusted here: valid_web_client_secret checks it
+/// against the registered digest before a code can be redeemed.
+fn token_client_id(headers: &HeaderMap, form_client_id: Option<&str>) -> Option<String> {
+    let basic_id = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|v| v.strip_prefix("Basic "))
+        .filter(|v| v.len() <= 1024)
+        .and_then(|encoded| STANDARD.decode(encoded).ok())
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .and_then(|credentials| credentials.split_once(':').map(|(id, _)| id.to_owned()));
+    let id = match (form_client_id, basic_id.as_deref()) {
+        (Some(form), Some(basic)) if form != basic => return None,
+        (Some(form), _) => form,
+        (None, Some(basic)) => basic,
+        (None, None) => return None,
+    };
+    if id.is_empty() || id.len() > 256 || id.bytes().any(|b| b.is_ascii_control()) {
+        return None;
+    }
+    Some(id.to_owned())
 }
 
 /// Accepts public PKCE clients without credentials and web clients
@@ -102,16 +131,18 @@ pub async fn token(
         return invalid_request().into_response();
     };
     if form.grant_type != "authorization_code"
-        || form.client_id.len() > 256
         || form.code.len() > 256
         || form.redirect_uri.len() > 2048
         || form.code_verifier.len() > 128
     {
         return invalid_request().into_response();
     }
+    let Some(client_id) = token_client_id(&headers, form.client_id.as_deref()) else {
+        return invalid_request().into_response();
+    };
     if !state
         .abuse
-        .allow("oidc_token", &form.client_id, 80, 20)
+        .allow("oidc_token", &client_id, 80, 20)
         .await
     {
         return (
@@ -122,7 +153,7 @@ pub async fn token(
     }
 
     let app = match client::Entity::find()
-        .filter(client::COLUMN.client_id.eq(&form.client_id))
+        .filter(client::COLUMN.client_id.eq(&client_id))
         .filter(client::COLUMN.active.eq(true))
         .one(&state.db)
         .await
@@ -135,7 +166,7 @@ pub async fn token(
         "web" => app
             .client_secret_hash
             .as_deref()
-            .is_some_and(|hash| valid_web_client_secret(&headers, &form.client_id, hash)),
+            .is_some_and(|hash| valid_web_client_secret(&headers, &client_id, hash)),
         _ => false,
     };
     if !client_authenticated {
@@ -155,7 +186,7 @@ pub async fn token(
     let grant = match grants::redeem(
         &state.db,
         &form.code,
-        &form.client_id,
+        &client_id,
         &form.redirect_uri,
         &form.code_verifier,
     )
@@ -305,10 +336,34 @@ pub async fn userinfo(State(state): State<AppState>, headers: HeaderMap) -> impl
 
 #[cfg(test)]
 mod confidential_client_tests {
-    use super::valid_web_client_secret;
+    use super::{token_client_id, valid_web_client_secret, TokenRequest};
     use axum::http::{HeaderMap, header};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
     use sha2::{Digest, Sha256};
+
+    #[test]
+    fn oauth_basic_auth_can_identify_web_client_without_duplicate_form_id() {
+        let mut headers = HeaderMap::new();
+        let id = "e9d8effa-5255-4ea7-9de5-85d86f614a9f";
+        let secret = "z".repeat(43);
+        let encoded = STANDARD.encode(format!("{id}:{secret}"));
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Basic {encoded}").parse().unwrap(),
+        );
+        assert_eq!(token_client_id(&headers, None).as_deref(), Some(id));
+        assert_eq!(token_client_id(&headers, Some(id)).as_deref(), Some(id));
+        assert_eq!(token_client_id(&headers, Some("different")), None);
+        assert_eq!(token_client_id(&HeaderMap::new(), None), None);
+        let request: TokenRequest = serde_json::from_value(serde_json::json!({
+            "grant_type":"authorization_code",
+            "redirect_uri":"https://orbite.donnarieix.fr/auth/oidc/callback",
+            "code":"one-time-code",
+            "code_verifier":"pkce-secret"
+        }))
+        .unwrap();
+        assert_eq!(request.client_id, None);
+    }
 
     #[test]
     fn basic_client_authentication_requires_correct_id_and_secret() {
