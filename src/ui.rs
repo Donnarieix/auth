@@ -37,44 +37,20 @@ form{display:grid;gap:1.08rem}form button{justify-self:start}p{margin:.4rem 0 1.
 .segmented{display:flex;padding:4px;background:var(--surface-hover);border-radius:11px;gap:4px;margin:0 0 22px}.segmented button{background:transparent;border:0;flex:1;color:var(--muted);padding:10px;min-height:41px}.segmented button:hover:not(:disabled){background:var(--accent-soft);color:var(--text)}.segmented button[aria-selected=true]{background:var(--accent);color:var(--bg)}
 .account-links{display:flex;gap:10px;flex-wrap:wrap;margin:21px 0 0}.account-links button{font-size:.83rem;min-height:38px}.consent-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}.consent-actions form{display:block}.consent-actions button{min-width:130px}.view[hidden]{display:none!important}.item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}.item:last-child{border-bottom:0}.item-title{font-weight:690}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.85rem;overflow-wrap:anywhere}.pill{display:inline-flex;font-size:.75rem;font-weight:680;padding:3px 10px;border-radius:100px;color:#a6e8c0;background:#163723}.toolbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-bottom:21px}.empty{padding:29px 18px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
 hr{border:0;border-top:1px solid var(--line);margin:26px 0}summary{cursor:pointer;color:var(--text);font-weight:630}details{border-top:1px solid var(--line);padding:13px 0}
+.avatar-editor-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:16px}.avatar-large{height:100px;width:100px;object-fit:cover;border-radius:24px;background:var(--accent-soft);display:grid;place-items:center;font-size:2rem;font-weight:750}.crop-inner{display:grid;gap:14px;min-width:min(92vw,420px)}dialog{border:1px solid var(--line);border-radius:18px;background:var(--surface);color:var(--text);padding:24px;max-width:min(96vw,490px)}dialog::backdrop{background:rgba(0,0,0,.75);backdrop-filter:blur(3px)}.crop-viewport{touch-action:none;width:min(80vw,360px);height:min(80vw,360px);overflow:hidden;position:relative;margin:auto;border-radius:14px;background:#252a34;cursor:grab}.crop-viewport img{position:absolute;top:50%;left:50%;max-width:none;user-select:none;pointer-events:none;transform-origin:center}.crop-actions{display:flex;flex-wrap:wrap;gap:8px}.crop-actions button{flex:1}.legal-article{max-width:75ch}.legal-article section{margin:25px 0}.legal-article h2{margin-bottom:10px}.legal-article li{margin-bottom:8px}
 .foot{padding:22px clamp(18px,3vw,38px);border-top:1px solid var(--line);color:var(--muted);font-size:.78rem;display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap}
 @media(max-width:980px){.auth-layout{grid-template-columns:210px minmax(0,1fr)}.columns{grid-template-columns:1fr}}
 @media(max-width:690px){.auth-layout{display:block}.sidebar{height:auto;position:relative;padding:11px 13px 9px}.brand{padding:0 5px 10px}.brand img{width:38px;height:38px}.side-group{display:none}.side-nav{display:flex;overflow-x:auto;gap:5px}.side-nav a{white-space:nowrap;padding:8px 11px;font-size:.82rem;min-height:38px}.side-nav svg{width:16px;height:16px}.sidebar-bottom{display:none}.topbar{min-height:70px;padding:13px 18px}.topbar-title{font-size:1.1rem}.page{padding:24px 16px 45px}.panel{padding:20px}.grid-two{grid-template-columns:1fr}.foot{padding:20px 16px}.segmented{flex-wrap:wrap}.segmented button{flex:1 0 40%}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 "#;
 
-const SCRIPT: &str = r#"(()=>{
-const select=document.querySelector('[data-theme-picker]');
-if(!select)return;
-const saved=localStorage.getItem('auth-theme');
-const selected=['system','light','dark','contrast'].includes(saved)?saved:'dark';
-select.value=selected;
-const query=matchMedia('(prefers-color-scheme: dark)');
-const apply=()=>{document.body.dataset.theme=select.value==='system'?(query.matches?'dark':'light'):select.value;};
-fetch('/me',{credentials:'same-origin',cache:'no-store'})
-.then(r=>{
-  const logged=r.ok;
-  document.querySelectorAll('[data-auth-only]').forEach(e=>e.hidden=!logged);
-  document.querySelectorAll('[data-guest-only]').forEach(e=>e.hidden=logged);
-  const logout=document.querySelector('[data-auth-logout]');
-  if(logout) logout.hidden=!logged;
-  document.body.dataset.authenticated=String(logged);
-})
-.catch(()=>{document.body.dataset.authenticated='false';});
-document.querySelectorAll('[data-auth-logout]').forEach(button=>button.addEventListener('click',async()=>{
-  button.disabled=true;
-  try{
-    const r=await fetch('/logout',{method:'POST',credentials:'same-origin'});
-    if(r.ok){location.assign('/account');return;}
-  }finally{button.disabled=false;}
-}));
-select.addEventListener('change',()=>{localStorage.setItem('auth-theme',select.value);apply();});
-query.addEventListener('change',apply);
-apply();
-})();"#;
+const SCRIPT: &str = r#"(()=>{const select=document.querySelector('[data-theme-picker]');if(!select)return;const saved=localStorage.getItem('auth-theme');select.value=['system','light','dark','contrast'].includes(saved)?saved:'system';const q=matchMedia('(prefers-color-scheme: dark)');const apply=()=>{document.body.dataset.theme=select.value==='system'?(q.matches?'dark':'light'):select.value;};fetch('/me',{credentials:'same-origin',cache:'no-store'}).then(r=>{const logged=r.ok;document.querySelectorAll('[data-auth-only]').forEach(e=>e.hidden=!logged);document.querySelectorAll('[data-guest-only]').forEach(e=>e.hidden=logged);document.querySelectorAll('[data-auth-logout]').forEach(e=>e.hidden=!logged);}).catch(()=>{});document.querySelectorAll('[data-auth-logout]').forEach(button=>button.addEventListener('click',async()=>{button.disabled=true;try{const r=await fetch('/logout',{method:'POST',credentials:'same-origin'});if(r.ok)location.assign('/account');}finally{button.disabled=false;}}));select.addEventListener('change',()=>{localStorage.setItem('auth-theme',select.value);apply();});q.addEventListener('change',apply);apply();})();"#;
 
 pub fn render(title: &str, area: &str, body: &str) -> Html<String> {
     let developer = area.starts_with("/developer");
+    let legal = matches!(area, "/mentions-legales" | "/cgu" | "/confidentialite");
+    let robots = if legal { "index,follow" } else { "noindex,nofollow" };
+    let description = if legal { "Informations légales, confidentialité et conditions d'utilisation de Donnarieix Auth." } else { "Gérez votre identité Donnarieix et les applications autorisées." };
     let links: &[(&str, &str)] = if developer {
         &[("Applications", "/developer"), ("Mon profil", "/account/profile"), ("Autorisations", "/account/permissions")]
     } else {
@@ -103,8 +79,8 @@ pub fn render(title: &str, area: &str, body: &str) -> Html<String> {
     let other = if developer { "/account" } else { "/developer" };
     let other_label = if developer { "Espace personnel" } else { "Espace développeur" };
     Html(format!(
-        r####"<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#0b0e14"><title>{title} · Donnarieix Auth</title><link rel="icon" href="/assets/donnarieix-logo.svg" type="image/svg+xml"><style>{STYLE}</style></head><body>
+        r####"<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#0b0e14"><title>{title} · Donnarieix Auth</title><meta name="robots" content="{robots}"><meta name="description" content="{description}"><link rel="icon" href="/assets/donnarieix-logo.svg" type="image/svg+xml"><style>{STYLE}</style></head><body>
 <div class="auth-layout"><aside class="sidebar"><a class="brand" href="/account"><img src="/assets/donnarieix-logo.svg" width="44" height="44" alt=""><span>Donnarieix Auth<small>Identité et accès</small></span></a><div class="side-group">{section}</div><nav class="side-nav" aria-label="Navigation principale">{navigation}</nav><div class="side-group">Autre espace</div><nav class="side-nav" aria-label="Navigation secondaire"><a href="{other}">{other_label}</a></nav><div class="sidebar-bottom"><label for="theme-picker">Apparence</label><select id="theme-picker" data-theme-picker aria-label="Choisir le thème"><option value="system">Système</option><option value="dark">Sombre</option><option value="light">Clair</option><option value="contrast">Contraste élevé</option></select></div></aside>
-<div class="main"><header class="topbar"><div><div class="topbar-kicker">{section}</div><div class="topbar-title">{title}</div></div></header><main class="page">{body}</main><footer class="foot"><span>Donnarieix Auth · Identité sous votre contrôle</span><span>Connexion et administration séparées</span></footer></div></div><script>{SCRIPT}</script></body></html>"####
+<div class="main"><header class="topbar"><div><div class="topbar-kicker">{section}</div><div class="topbar-title">{title}</div></div></header><main class="page">{body}</main><footer class="foot"><span>Donnarieix Auth · Identité sous votre contrôle</span><nav aria-label="Informations légales"><a href="/mentions-legales">Mentions légales</a> · <a href="/confidentialite">Confidentialité</a> · <a href="/cgu">CGU</a> · <a href="mailto:seppyl@donnarieix.fr">Contact</a></nav></footer></div></div><script>{SCRIPT}</script></body></html>"####
     ))
 }
