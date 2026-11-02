@@ -24,7 +24,7 @@ form{display:grid;gap:1.08rem}form button{justify-self:start}p{margin:.4rem 0 1.
 .brand small{display:block;font-weight:480;letter-spacing:0;margin-top:5px;font-size:.73rem;color:#a7b2c2}
 .side-group{font-size:.71rem;font-weight:750;letter-spacing:.11em;text-transform:uppercase;color:#8391a5;padding:14px 15px 7px}
 .side-nav{display:grid;gap:5px}.side-nav a{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:10px;font-weight:550;font-size:.9rem;min-height:43px}
-.side-nav a:hover{background:#222a36;color:white}.side-nav a[aria-current=page]{background:#e8edf5;color:#131922;font-weight:700}
+.side-nav a:hover{background:#222a36;color:white}.side-nav a[aria-current=page]{background:#e8edf5;color:#131922;font-weight:700}.side-nav button{width:100%;text-align:left;justify-content:flex-start;min-height:43px;font-size:.9rem}
 .side-nav svg{width:19px;height:19px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .sidebar-bottom{margin-top:auto;padding:16px 8px 4px;border-top:1px solid #2c3542}.sidebar-bottom label{font-size:.75rem;color:#a4afbe}.sidebar-bottom select{margin-top:5px;min-height:38px;background:#151c27;color:#e9eef7;border-color:#414b5b;font-size:.82rem}
 .main{min-width:0}.topbar{min-height:96px;display:flex;align-items:center;border-bottom:1px solid var(--line);padding:21px clamp(18px,3vw,37px);gap:18px}
@@ -51,6 +51,23 @@ const selected=['system','light','dark','contrast'].includes(saved)?saved:'dark'
 select.value=selected;
 const query=matchMedia('(prefers-color-scheme: dark)');
 const apply=()=>{document.body.dataset.theme=select.value==='system'?(query.matches?'dark':'light'):select.value;};
+fetch('/me',{credentials:'same-origin',cache:'no-store'})
+.then(r=>{
+  const logged=r.ok;
+  document.querySelectorAll('[data-auth-only]').forEach(e=>e.hidden=!logged);
+  document.querySelectorAll('[data-guest-only]').forEach(e=>e.hidden=logged);
+  const logout=document.querySelector('[data-auth-logout]');
+  if(logout) logout.hidden=!logged;
+  document.body.dataset.authenticated=String(logged);
+})
+.catch(()=>{document.body.dataset.authenticated='false';});
+document.querySelectorAll('[data-auth-logout]').forEach(button=>button.addEventListener('click',async()=>{
+  button.disabled=true;
+  try{
+    const r=await fetch('/logout',{method:'POST',credentials:'same-origin'});
+    if(r.ok){location.assign('/account');return;}
+  }finally{button.disabled=false;}
+}));
 select.addEventListener('change',()=>{localStorage.setItem('auth-theme',select.value);apply();});
 query.addEventListener('change',apply);
 apply();
@@ -66,7 +83,19 @@ pub fn render(title: &str, area: &str, body: &str) -> Html<String> {
     let mut navigation = String::new();
     for (name, href) in links {
         let current = if area == *href { " aria-current=\"page\"" } else { "" };
-        navigation.push_str(&format!(r#"<a href="{href}"{current}>{name}</a>"#));
+        let visibility = if *href == "/account/profile" || *href == "/account/permissions" {
+            " data-auth-only hidden"
+        } else if *href == "/account" {
+            " data-guest-only"
+        } else {
+            ""
+        };
+        navigation.push_str(&format!(r#"<a href="{href}"{current}{visibility}>{name}</a>"#));
+    }
+    if !developer {
+        navigation.push_str(
+            r#"<button type="button" class="secondary" data-auth-logout hidden>Déconnexion</button>"#,
+        );
     }
     // The developer and end-user identities are distinct. Their screens must
     // not imply that being signed into one grants access to the other.
