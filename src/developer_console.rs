@@ -1,5 +1,5 @@
 //! Authenticated graphite developer dashboard with original Donnarieix brand.
-use axum::{extract::State, http::{header, StatusCode}, response::{Html, IntoResponse}};
+use axum::{extract::State, http::{header, StatusCode}, response::IntoResponse};
 use axum_extra::extract::CookieJar;
 use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use serde::Serialize;

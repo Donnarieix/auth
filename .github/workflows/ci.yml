@@ -35,6 +35,8 @@ jobs:
         run: |
           node --check src/assets/developer-console.js
           node --check src/assets/account-profile.js
+          node --check src/assets/workspace.js
+          node --check src/assets/authorization.js
       - name: Regression test - Auth executable directory permissions
         run: bash deploy/tests/permissions-test.sh
       - name: Clippy

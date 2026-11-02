@@ -234,6 +234,7 @@ pub async fn authorization_page(
         ],
         page,
     )
+        .into_response()
 
 }
 
