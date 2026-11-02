@@ -290,7 +290,7 @@ async fn complete_code_pkce_consent_jwks_userinfo_and_replay_protection() {
     assert!(
         std::str::from_utf8(&html)
             .unwrap()
-            .contains("Allow this application")
+            .contains("Autoriser et continuer")
     );
 
     // A GET must never issue a code. Approval requires an explicit POST.
