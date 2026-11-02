@@ -101,10 +101,9 @@ pub async fn upload(
     };
     if let Some(old_id) = old_url.as_deref()
         .and_then(|url| stored_avatar_id(url, &state.security.origin))
+        && old_id != id
     {
-        if old_id != id {
-            let _ = tokio::fs::remove_file(avatar_path(old_id)).await;
-        }
+        let _ = tokio::fs::remove_file(avatar_path(old_id)).await;
     }
     Ok(Json(updated.into()))
 }
@@ -141,6 +140,11 @@ pub async fn image(Path(file): Path<String>) -> Result<Response, StatusCode> {
     Ok(([(header::CONTENT_TYPE, "image/webp")], bytes).into_response())
 }
 
+/// App-owned static script; no dynamic data or user interpolation.
+pub async fn profile_script() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/javascript; charset=utf-8")], include_str!("assets/account-profile.js"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{normalize, stored_avatar_id};
@@ -166,9 +170,4 @@ mod tests {
         DynamicImage::new_rgba8(256, 256).write_to(&mut valid, ImageFormat::WebP).unwrap();
         assert!(normalize(&valid.into_inner()).is_ok());
     }
-}
-
-/// App-owned static script; no dynamic data or user interpolation.
-pub async fn profile_script() -> impl IntoResponse {
-    ([(header::CONTENT_TYPE, "text/javascript; charset=utf-8")], include_str!("assets/account-profile.js"))
 }
