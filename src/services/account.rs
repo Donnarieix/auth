@@ -81,20 +81,21 @@ pub async fn issue(state: &AppState, email: &str, purpose: Purpose) -> Result<()
 
     let (subject, explanation) = match purpose {
         Purpose::VerifyEmail => (
-            "Donnarieix Auth: verify your email",
-            "Enter this verification code using POST /email/verification/confirm",
+            "Donnarieix Auth - Verification de votre adresse email",
+            "Vous avez demande la creation d'un compte Donnarieix Auth. Saisissez le code ci-dessous dans la rubrique Verifier mon adresse.",
         ),
         Purpose::ResetPassword => (
-            "Donnarieix Auth: reset your password",
-            "Enter this recovery code with a new password using POST /password/reset/confirm",
+            "Donnarieix Auth - Reinitialisation du mot de passe",
+            "Une reinitialisation du mot de passe a ete demandee. Saisissez ce code dans la rubrique Mot de passe oublie.",
         ),
     };
     let mail = Mail {
         recipient: account.email,
         subject: subject.into(),
         body: format!(
-            "{explanation}\n\nCode: {token}\n\nExpires in {} minutes. If you did not request this, ignore it.",
-            purpose.validity().num_minutes()
+            "{explanation}\n\nCode: {token}\n\nCe code expire dans {} minutes.\n\nAcceder a Donnarieix Auth : {}/account\n\nSi vous n'etes pas a l'origine de cette demande, ignorez ce message.",
+            purpose.validity().num_minutes(),
+            state.security.origin
         ),
     };
     if state.mailer.send(mail).await.is_err() {
