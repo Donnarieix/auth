@@ -60,3 +60,62 @@ async fn application_setup_has_no_redundant_manual_client_lookup() {
         assert_eq!(response.status(), StatusCode::OK, "missing asset {path}");
     }
 }
+
+#[tokio::test]
+async fn shared_workspace_stylesheet_is_allowed_on_every_legacy_view() {
+    use axum::http::header;
+
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    schema::apply(&db).await.unwrap();
+    let app = router(AppState::with_db(db));
+
+    for path in [
+        "/account",
+        "/account/profile",
+        "/account/permissions",
+        "/developer/new-client",
+        "/developer/manage-client?client_id=test",
+        "/mentions-legales",
+        "/confidentialite",
+        "/cgu",
+    ] {
+        let response = app
+            .clone()
+            .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "unexpected status for {path}");
+        let policy = response.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap();
+        assert!(
+            policy.split(';').map(str::trim).any(|directive| {
+                directive == "style-src 'self' 'unsafe-inline'"
+            }),
+            "first-party workspace.css must be allowed on {path}, got {policy}"
+        );
+        let html = String::from_utf8(
+            to_bytes(response.into_body(), 200_000)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(
+            html.contains("href=\"/assets/workspace.css\""),
+            "missing shared stylesheet on {path}"
+        );
+    }
+
+    let css = app
+        .oneshot(
+            Request::builder()
+                .uri("/assets/workspace.css")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(css.status(), StatusCode::OK);
+    assert!(css.headers()[header::CONTENT_TYPE].to_str().unwrap().starts_with("text/css"));
+}
