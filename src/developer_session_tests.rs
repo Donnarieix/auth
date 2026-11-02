@@ -584,3 +584,63 @@ async fn developer_login_is_locked_during_mfa_recovery_until_reenrollment() {
     .await;
     assert_eq!(request.status(), StatusCode::UNAUTHORIZED);
 }
+
+
+#[tokio::test]
+async fn sha1_temporary_codes_work_without_changing_existing_sha256_accounts() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    schema::apply(&db).await.unwrap();
+    let token = "A".repeat(43);
+    let secret = b"12345678901234567890123456789012";
+    db.execute_raw(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        "INSERT INTO developer_administrators(id, username, token_hash, created_at, active, totp_secret, totp_required, totp_algorithm) VALUES (?, ?, ?, ?, 1, ?, 1, 'SHA1')",
+        [
+            Uuid::new_v4().to_string().into(),
+            "sha1operator".to_owned().into(),
+            Sha256::digest(token.as_bytes()).to_vec().into(),
+            chrono::Utc::now().to_rfc3339().into(),
+            secret.to_vec().into(),
+        ],
+    )).await.unwrap();
+
+    let app = router(AppState::with_db(db));
+    let headers = [
+        ("origin", "http://127.0.0.1:3000"),
+        ("content-type", "application/json"),
+    ];
+    let now_step = (chrono::Utc::now().timestamp() / 30) as u64;
+    let totp = format!("{:06}", crate::admin_totp::code_sha1(secret, now_step));
+    let accepted = call(
+        &app,
+        Method::POST,
+        "/developer/login",
+        format!(r#"{{"username":"sha1operator","token":"{token}","totp":"{totp}"}}"#),
+        &headers,
+    ).await;
+    assert_eq!(accepted.status(), StatusCode::OK);
+
+    // The same code is consumed after successful login. No replay.
+    let replay = call(
+        &app,
+        Method::POST,
+        "/developer/login",
+        format!(r#"{{"username":"sha1operator","token":"{token}","totp":"{totp}"}}"#),
+        &headers,
+    ).await;
+    assert_eq!(replay.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn developer_page_distinguishes_http_authentication_and_csrf_errors() {
+    let db = Database::connect("sqlite::memory:").await.unwrap();
+    schema::apply(&db).await.unwrap();
+    let app = router(AppState::with_db(db));
+    let response = call(&app, Method::GET, "/developer", String::new(), &[]).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = String::from_utf8(to_bytes(response.into_body(), 100_000).await.unwrap().to_vec()).unwrap();
+    assert!(html.contains("r.status===401"));
+    assert!(html.contains("r.status===403"));
+    assert!(html.contains("r.status===429"));
+    assert!(!html.contains("console.log(data.get"));
+}
