@@ -31,6 +31,9 @@ async fn request_code(
     purpose: Purpose,
     scope: &'static str,
 ) -> StatusCode {
+    if state.security.secure && !state.mailer.enabled() {
+        return StatusCode::SERVICE_UNAVAILABLE;
+    }
     let Some(email) = normalize_email(&raw_email) else {
         return StatusCode::BAD_REQUEST;
     };
@@ -40,7 +43,9 @@ async fn request_code(
     // Detached from the response, so account existence and SMTP failure never
     // change its HTTP status. Credentials/codes are never returned in the API.
     tokio::spawn(async move {
-        let _ = account::issue(&state, &email, purpose).await;
+        if account::issue(&state, &email, purpose).await.is_err() {
+            eprintln!("Auth mail: transactional dispatch failed; request may be retried");
+        }
     });
     StatusCode::ACCEPTED
 }
