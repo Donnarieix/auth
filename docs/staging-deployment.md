@@ -288,6 +288,43 @@ Keep the credential in a password manager. Run the same
 `systemd-run` command with `admin totp enroll operator`, then
 `systemctl start donnarieix-auth`.
 
+**The administrator TOTP enrollment now defaults to RFC 6238 SHA-1,
+6 digits / 30 seconds**, compatible with most authenticator apps. Schema
+migration v15 records the algorithm per administrator and preserves
+SHA-256 for any previously enrolled credentials; no silent fallback is
+allowed. Existing SHA-256 credentials keep working with a compatible
+authenticator until explicitly reset.
+
+If an administrator token or TOTP seed was exposed, **rotate and reset
+them immediately**. On the CT console as root, stop the service, then
+run these commands locally (never in CI, chat or shell logs):
+
+```bash
+systemctl stop donnarieix-auth
+systemd-run --wait --pty --collect --property=User=donnarieix-auth \
+  --property=WorkingDirectory=/var/lib/donnarieix-auth \
+  --property=EnvironmentFile=/etc/donnarieix-auth/auth.env \
+  /opt/donnarieix-auth/bin/auth admin token rotate operator
+systemd-run --wait --pty --collect --property=User=donnarieix-auth \
+  --property=WorkingDirectory=/var/lib/donnarieix-auth \
+  --property=EnvironmentFile=/etc/donnarieix-auth/auth.env \
+  /opt/donnarieix-auth/bin/auth admin totp reset operator
+systemd-run --wait --pty --collect --property=User=donnarieix-auth \
+  --property=WorkingDirectory=/var/lib/donnarieix-auth \
+  --property=EnvironmentFile=/etc/donnarieix-auth/auth.env \
+  /opt/donnarieix-auth/bin/auth admin totp enroll operator
+systemctl start donnarieix-auth
+```
+
+Immediately save the newly generated administrator token and TOTP URI
+in a secure local manager; do not paste either into tickets or chat.
+Re-enroll the authenticator with the **new** URI and remove the old
+entry. If the login UI shows HTTP 403, check that the currently running
+`AUTH_PUBLIC_ORIGIN` exactly matches the browser's HTTPS origin,
+including the chosen hostname (currently `https://auth.donnarieix.fr`).
+A 401 means the credential or OTP was rejected, and 429 indicates
+rate limiting. Do not weaken CSRF checks to fix a hostname mismatch.
+
 Before inviting real users: verify browser CSP, HTTPS TLS, SMTP,
 account verification/recovery, multiple client OIDC PKCE flows,
 negative tests, secure cookies, backup restoration and monitoring.
