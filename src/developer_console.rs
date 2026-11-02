@@ -9,6 +9,11 @@ const LOGO: &str = include_str!("assets/donnarieix-logo.svg");
 const CSS: &str = include_str!("assets/developer-console.css");
 const JS: &str = include_str!("assets/developer-console.js");
 
+// The dashboard loads external first-party assets, unlike the older inline UI.
+// Scope the policy to this HTML response; do not relax CSP for OIDC or account
+// pages. Inline attributes currently used for presentation still need styles.
+const DEVELOPER_CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+
 pub async fn logo() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "image/svg+xml; charset=utf-8"), (header::CACHE_CONTROL, "public, max-age=3600")], LOGO)
 }
@@ -18,8 +23,8 @@ pub async fn styles() -> impl IntoResponse {
 pub async fn script() -> impl IntoResponse {
     ([(header::CONTENT_TYPE, "text/javascript; charset=utf-8")], JS)
 }
-pub async fn page() -> Html<&'static str> {
-    Html(r####"<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#090d13"><title>Console développeur · Donnarieix Auth</title><link rel="icon" href="/assets/donnarieix-logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/developer-console.css"></head><body>
+pub async fn page() -> impl IntoResponse {
+    ([(header::CONTENT_SECURITY_POLICY, DEVELOPER_CSP)], Html(r####"<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><meta name="theme-color" content="#090d13"><title>Console développeur · Donnarieix Auth</title><link rel="icon" href="/assets/donnarieix-logo.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/developer-console.css"></head><body>
 <div class="layout">
 <aside class="sidebar">
 <a href="/developer" class="brand"><img class="brand-logo" src="/assets/donnarieix-logo.svg" width="51" height="51" alt=""><span class="brand-text"><span class="brand-name">Donnarieix Auth</span><span class="brand-sub" style="display:block">Console développeur</span></span></a>
@@ -54,7 +59,7 @@ pub async fn page() -> Html<&'static str> {
 <div class="content-grid"><section class="panel"><div class="panel-heading"><div class="panel-title"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M2 6h2M2 12h2M2 18h2"/></svg><h2>Activités administratives récentes</h2></div></div><div id="audit-rows" class="audit-list"></div></section>
 <aside class="panel"><div class="panel-heading"><div class="panel-title"><svg viewBox="0 0 24 24"><path d="M12 6C8 3 5 4 2 5v15c4-2 7-2 10 1 3-3 6-3 10-1V5c-3-1-6-2-10 1zm0 0v15"/></svg><h2>Ressources</h2></div></div><div><a class="resource-link" href="/.well-known/openid-configuration"><span><strong>Découverte OpenID Connect</strong><span>Configuration publique de l’émetteur</span></span><span class="arrow">↗</span></a><a class="resource-link" href="/.well-known/jwks.json"><span><strong>Clés de signature</strong><span>Clés publiques de vérification</span></span><span class="arrow">↗</span></a><a class="resource-link" href="/account/permissions"><span><strong>Autorisations utilisateur</strong><span>Consentements et révocations</span></span><span class="arrow">↗</span></a></div></aside></div>
 </div>
-</main></div></div><script src="/assets/developer-console.js" defer></script></body></html>"####)
+</main></div></div><script src="/assets/developer-console.js" defer></script></body></html>"####))
 }
 
 #[derive(Serialize)]
@@ -110,6 +115,44 @@ mod tests {
     use super::*;
     use axum::{body::Body, http::Request};
     use tower::ServiceExt;
+    #[tokio::test]
+    async fn console_csp_permits_first_party_files_and_blocks_inline_scripts() {
+        use axum::{body::to_bytes, http::header};
+        let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
+        crate::schema::apply(&db).await.unwrap();
+        let app = crate::router(AppState::with_db(db));
+        let page = app.clone().oneshot(Request::builder()
+            .uri("/developer").body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(page.status(), StatusCode::OK);
+        let csp = page.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert_eq!(csp, DEVELOPER_CSP);
+        assert!(csp.contains("default-src 'none'"));
+        assert!(csp.contains("script-src 'self'"));
+        assert!(csp.contains("style-src 'self'"));
+        assert!(!csp.contains("script-src 'unsafe-inline'"));
+        let html = to_bytes(page.into_body(), 200_000).await.unwrap();
+        let html = String::from_utf8(html.to_vec()).unwrap();
+        assert!(html.contains("href=\"/assets/developer-console.css\""));
+        assert!(html.contains("src=\"/assets/developer-console.js\""));
+
+        for (path, media_type) in [
+            ("/assets/developer-console.js", "text/javascript; charset=utf-8"),
+            ("/assets/developer-console.css", "text/css; charset=utf-8"),
+            ("/assets/donnarieix-logo.svg", "image/svg+xml; charset=utf-8"),
+        ] {
+            let response = app.clone().oneshot(Request::builder()
+                .uri(path).body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status(), StatusCode::OK, "{path}");
+            assert_eq!(response.headers()[header::CONTENT_TYPE], media_type, "{path}");
+            assert!(!to_bytes(response.into_body(), 100_000).await.unwrap().is_empty(), "{path}");
+        }
+        // The legacy inline UIs keep their existing CSP, not the new policy.
+        let legacy = app.oneshot(Request::builder()
+            .uri("/account").body(Body::empty()).unwrap()).await.unwrap();
+        assert!(legacy.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str().unwrap().contains("script-src 'unsafe-inline'"));
+    }
+
     #[tokio::test]
     async fn overview_requires_developer_session() {
         let db = sea_orm::Database::connect("sqlite::memory:").await.unwrap();
